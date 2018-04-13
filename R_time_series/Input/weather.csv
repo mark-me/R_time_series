@@ -1,0 +1,29 @@
+# BRON: KONINKLIJK NEDERLANDS METEOROLOGISCH INSTITUUT (KNMI)
+# Opmerking: door stationsverplaatsingen en veranderingen in waarneemmethodieken zijn deze tijdreeksen van dagwaarden mogelijk inhomogeen! Dat betekent dat deze reeks van gemeten waarden niet geschikt is voor trendanalyse. Voor studies naar klimaatverandering verwijzen we naar de gehomogeniseerde reeks maandtemperaturen van De Bilt <http://www.knmi.nl/kennis-en-datacentrum/achtergrond/gehomogeniseerde-reeks-maandtemperaturen-de-bilt> of de Centraal Nederland Temperatuur <http://www.knmi.nl/kennis-en-datacentrum/achtergrond/centraal-nederland-temperatuur-cnt>.
+# 
+# 
+# STN      LON(east)   LAT(north)     ALT(m)  NAME
+# 240:         4.790       52.317      -0.33  Schiphol
+# 
+# YYYYMMDD = Date (YYYY=year MM=month DD=day); 
+# DDVEC    = Vector mean wind direction in degrees (360=north, 90=east, 180=south, 270=west, 0=calm/variable); 
+# FHVEC    = Vector mean windspeed (in 0.1 m/s); 
+# FG       = Daily mean windspeed (in 0.1 m/s); 
+# FHX      = Maximum hourly mean windspeed (in 0.1 m/s); 
+# FXX      = Maximum wind gust (in 0.1 m/s); 
+# TG       = Daily mean temperature in (0.1 degrees Celsius); 
+# TN       = Minimum temperature (in 0.1 degrees Celsius); 
+# TX       = Maximum temperature (in 0.1 degrees Celsius); 
+# SQ       = Sunshine duration (in 0.1 hour) calculated from global radiation (-1 for <0.05 hour); 
+# SP       = Percentage of maximum potential sunshine duration; 
+# Q        = Global radiation (in J/cm2); 
+# DR       = Precipitation duration (in 0.1 hour); 
+# RX       = 
+# RXH      = 
+# NG       = Mean daily cloud cover (in octants, 9=sky invisible); 
+# UG       = Daily mean relative atmospheric humidity (in percents); 
+# 
+# STN,YYYYMMDD,DDVEC,FHVEC,   FG,  FHX,  FXX,   TG,   TN,   TX,   SQ,   SP,    Q,   DR,   RX,  RXH,   NG,   UG
+# 
+  240,19700101,   50,   15,   41,   72,     ,  -78, -105,  -41,   52,   67,     ,     ,  240,  240,    3,   78
+  240,19700102,  241,   41,   51,   67,     ,   14,  -33,   34,    0,    0,     ,     ,  240,  240,    8,   95

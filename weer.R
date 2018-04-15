@@ -1,5 +1,5 @@
-home_dir <- "~/R scripts"
-#home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"
+#home_dir <- "~/R scripts"
+home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"
 setwd(paste0(home_dir, "R_time_series/"))
 source("project.R")
 open_project("R_time_series", home_dir)
@@ -50,30 +50,61 @@ library(forecast)
 library(tseries)
 library(xts)
 
-
+# Create time series ----
 date_first <- min(tbl_weather$date_day)
+frequency(ts_temp_mean)
 ts_temp_mean <- ts(tbl_weather$temp_mean, frequency = 365, start = c(year(date_first), month(date_first)))
 ts_temp_mean <- tsclean(ts_temp_mean)
 
-autoplot(ts_temp_mean) +
-  geom_smooth() +
+autoplot(ts_temp_mean, col = col_graydon[3]) +
+  geom_smooth(method = "lm", col = col_graydon[2]) +
   theme_graydon("horizontal")
 
-frequency(ts_temp_mean)
+boxplot(ts_temp_mean~cycle(ts_temp_mean))
+
+# Decomposition ----
+decomp <- stl(ts_temp_mean, s.window = "periodic")
+deseasonal_temp <- seasadj(decomp)
+plot(decomp)
+
+ts_temp_mean_log <- log(ts_temp_mean + 20)
+ts_temp_mean_diff <- tsclean(diff(ts_temp_mean))
+plot(ts_temp_mean_diff)
+
+# Augmented Dickey-Fuller stationarity test ----
+adf.test(ts_temp_mean_diff, alternative = "stationary")
+
+deseasonal_temp_diff = diff(deseasonal_temp, differences = 1)
+plot(deseasonal_temp_diff)
+adf.test(deseasonal_temp_diff, alternative = "stationary")
 
 library(fpp2)
 library(astsa)
 
-plot.xts(ts_temp_mean) 
-
-acf <- ggAcf(ts_temp_mean) +
+# Auto correlation function plot
+acf <- ggAcf(ts_temp_mean_diff, lag.max = 15) +
   theme_graydon("horizontal")
 
-pacf <- ggPacf(ts_temp_mean) +
+# Partial autocorrelation function plot
+pacf <- ggPacf(ts_temp_mean_diff, lag.max = 15) +
   theme_graydon("horizontal")
 
 grid.arrange(acf, pacf)
 
+# Forecasting ----
+# Auto ARIMA forecasting
+fit_auto <- auto.arima(ts_temp_mean_diff, seasonal = TRUE)
+tsdisplay(residuals(fit_auto), 
+          lag.max = 15, 
+          main = 'Seasonal Model Residuals')
+
+fcast <- forecast(fit_auto, h=365)
+plot(fcast)
+
+# Manual ARIMA forecasting
+(fit <- arima(ts_temp_mean_diff, c(0, 1, 1), seasonal = list(order = c(0, 1, 1), period = 365)))
+
+# Determine seasonality ----
 ts_temp_mean_subset <- window(ts_temp_mean, start = 2009, end = 2017)
 
 ggseasonplot(ts_temp_mean_subset, polar = TRUE) +

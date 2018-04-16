@@ -1,11 +1,12 @@
-#home_dir <- "~/R scripts"
-home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"
+home_dir <- "~/R scripts"
+#home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"
 setwd(paste0(home_dir, "R_time_series/"))
 source("project.R")
 open_project("R_time_series", home_dir)
 
 library(httr)
 
+# Get weather data ----
 get_url <- "http://projects.knmi.nl/klimatologie/daggegevens/getdata_dag.cgi?"
 get_url <-paste(get_url,
                 "stns=240",
@@ -13,7 +14,7 @@ get_url <-paste(get_url,
                 "byear=1960&bmonth=1&bday=1",
                 "eyear=2018&emonth=12&eday=31",
                 sep = "&")
-
+# Column names
 cols_weather <- c("id_station", "date_day", "wind_direction_degrees", "wind_speed", "wind_speed_mean", "wind_speed_hour_max",
                   "wind_speed_max", "temp_mean", "temp_min", "temp_max", "hours_sunshine", "per_sunshine_potantial",
                   "duration_recipitation", "RX", "RXH", "cloud_cover_mean", "WTF", "humidity")
@@ -38,25 +39,28 @@ tbl_weather %<>%
          temp_min   = temp_min / 10,
          temp_max   = temp_max / 10)
 
+# Plot mean temperature data ----
 ggplot(tbl_weather, aes(date_day, temp_mean)) + 
-  geom_line(col = col_graydon[1]) + 
-  scale_x_date('Months') + 
+  geom_area(alpha = 0.5, position = position_dodge(0.8), col = col_graydon[2], fill = col_graydon[2]) + 
+  stat_smooth(color = col_graydon[1], fill = col_graydon[1], method = "loess")+
+  #scale_x_date('Months', limits = c(as.Date("2013-01-01"), NA)) + 
   scale_y_continuous(labels = format_number) +
   ylab("Temperature") +
   xlab("") + 
   theme_graydon("grid")
   
 library(forecast)
-library(tseries)
-library(xts)
+library(ggfortify)
+#library(tseries)
+#library(xts)
 
 # Create time series ----
 date_first <- min(tbl_weather$date_day)
-frequency(ts_temp_mean)
 ts_temp_mean <- ts(tbl_weather$temp_mean, frequency = 365, start = c(year(date_first), month(date_first)))
 ts_temp_mean <- tsclean(ts_temp_mean)
+frequency(ts_temp_mean)
 
-autoplot(ts_temp_mean, col = col_graydon[3]) +
+autoplot(ts_temp_mean, ts.colour = col_graydon[3]) +
   geom_smooth(method = "lm", col = col_graydon[2]) +
   theme_graydon("horizontal")
 

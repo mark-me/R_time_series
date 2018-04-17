@@ -3,6 +3,7 @@ home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"
 setwd(paste0(home_dir, "R_time_series/"))
 source("project.R")
 open_project("R_time_series", home_dir)
+library(yaml)
 
 library(httr)
 

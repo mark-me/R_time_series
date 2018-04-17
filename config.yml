@@ -1,0 +1,7 @@
+home_dir: "~/R scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/"         
+process_rds: TRUE
+
+# Analysis variables
+date_start: "1997-01-01"
+date_end: "2017-10-01"
+code_nace: "47"

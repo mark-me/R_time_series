@@ -141,13 +141,12 @@ tbl_model_error <- data_frame(method = as.character(), MASE = as.integer())
 # Function for displaying forecast and evaluating model
 evaluate_forecast <- function(forecast_model, ts_full){
   
-  p_fc <-autoplot(forecast_model,
-                  main = forecast_model$method,
-                  ts.colour = col_graydon[1])
+  autoplot(forecast_model,
+           main = forecast_model$method,
+           ts.colour = col_graydon[1])
   
-  p_res <- checkresiduals(forecast_model)
-  grid.arrange(p_fc, p_res)
-  
+  #p_res <- checkresiduals(forecast_model)
+
   data.frame(method = forecast_model$method,
              MASE = accuracy(forecast_model, ts_full)["Test set", "MASE"])
 }
@@ -159,6 +158,9 @@ tbl_model_error <- rbind(tbl_model_error, evaluate_forecast(fit_mean, ts_compani
 # Naive
 fit_naive <- naive(ts_companies_train, h = 60)
 tbl_model_error <- rbind(tbl_model_error, evaluate_forecast(fit_naive, ts_companies_clean))
+
+autoplot(fit_naive) +
+  autolayer(fit_naive)
 
 # Simple exponential smoothing
 fit_ses <- ses(ts_companies_train, h = 60)
@@ -174,3 +176,7 @@ tbl_model_error <- rbind(tbl_model_error, evaluate_forecast(fit_hw, ts_companies
 
 fit_hw <- hw(ts_companies_train, h = 60, seasonal = "additive")
 tbl_model_error <- rbind(tbl_model_error, evaluate_forecast(fit_hw, ts_companies_clean))
+
+# Errors, Trend, and Seasonality (ETS)
+fit_ets <- forecast(ets(ts_companies_train))
+autoplot(fit_ets)

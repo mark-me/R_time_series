@@ -1,5 +1,5 @@
 # Installing and loading libraries
-list_of_packages <- c("ggplot2", "dplyr", "magrittr", "purrr", "fst", "ggmap", "ggthemes", "reshape2", "scales", "xlsx",
+list_of_packages <- c("ggplot2", "dplyr", "magrittr", "purrr", "fst", "ggmap", "ggthemes", "reshape2", "scales",
                       "stringr", "RColorBrewer", "qgraph", "Hmisc", "factoextra", "cluster", "kimisc", "ggrepel", "class",
                       "lubridate", "tidyr", "broom", "funr", "htmltools", "outliers", "readr", "janitor", "ggmosaic",
                       "extrafont", "gridExtra")

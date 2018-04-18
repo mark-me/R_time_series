@@ -1,9 +1,10 @@
-home_dir <- "~/R scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/"   
-setwd(paste0(home_dir, "R_time_series/"))
+home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+setwd(paste0(home_dir, "/R_time_series/"))
 
 source("project.R")
 source("load_companies.R")
 source("roll_up_nace_tree.R")
+source("forecast_functions.R")
 
 # Configuration file
 library(yaml)
@@ -119,8 +120,6 @@ ts_companies_train = subset(ts_companies_clean, end = length(ts_companies_clean)
 # Set up data frame for error evaluation
 tbl_model_error <- data_frame(method = as.character(), MASE = as.integer())
 
-
-
 # Mean forecasting (mean of all observations)
 fit_mean <- meanf(ts_companies_train, h = months_forecast)
 result_fit <- evaluate_forecast(fit_mean, ts_companies_clean)
@@ -145,19 +144,20 @@ result_fit <- evaluate_forecast(fit_holt, ts_companies_clean)
 result_fit$p_forecast
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
-# Holt-Winters seasonal method
+# Holt-Winters seasonal method - Multiplicative
 fit_hw <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicative")
 result_fit <- evaluate_forecast(fit_hw, ts_companies_clean)
 result_fit$p_forecast
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
+# Holt-Winters seasonal method - Additive
 fit_hw <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw, ts_companies_clean)
 result_fit$p_forecast
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Errors, Trend, and Seasonality (ETS)
-model_ets <- forecast(ets(ts_companies_train))
+model_ets <- ets(ts_companies_train)
 fit_ets <- forecast(model_ets)
 result_fit <- evaluate_forecast(fit_ets, ts_companies_clean)
 result_fit$p_forecast
@@ -193,7 +193,9 @@ p_clean <- autoplot(ts_companies_clean,
 grid.arrange(p_clean, p_diff)
 
 # Removing seasonality
-ts_companies_deseason <- diff(log(ts_companies_diff + min(ts_companies_diff)), lag = 12)
+ts_test <- ts_companies_diff + 1000
+
+ts_companies_deseason <- diff(log(ts_test), lag = 12)
 
 p_deseason <- autoplot(ts_companies_deseason, 
                     ts.colour = col_graydon[1], 
@@ -201,3 +203,13 @@ p_deseason <- autoplot(ts_companies_deseason,
   theme_graydon("grid")
 
 grid.arrange(p_clean, p_deseason)
+
+# Alternative all in one
+decomp <- stl(ts_companies_clean, s.window = "periodic")
+plot(decomp)
+
+# ARIMA (automatic)
+model_auto.arima <- auto.arima(ts_companies_train)
+result_fit <- evaluate_forecast(fit_ets, ts_companies_clean)
+result_fit$p_forecast
+tbl_model_error <- rbind(tbl_model_error, result_fit$mase)

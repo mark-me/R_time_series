@@ -234,6 +234,12 @@ theme_graydon <- function(type = c("grid", "horizontal", "blank")) {
             axis.line.y = element_blank()
       )
     
+  } else   if (type == "vertical") {
+    
+    graydon_theme <- graydon_theme +
+      theme(panel.grid.major.y = element_blank(),
+            axis.line.x = element_blank()
+      )
   } else if (type == "blank") {
     
     graydon_theme <- theme_gdocs() +

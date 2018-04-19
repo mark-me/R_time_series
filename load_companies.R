@@ -40,10 +40,10 @@ prep_companies <- function(do_processing, date_from, date_to){
 }
 
 # Aggregate company data ----
-aggregate_companies <- function(tbl_companies, tbl_dictionary){
+aggregate_companies <- function(tbl_companies, tbl_dictionary, date_from, date_to){
   
   # Aggregate company data ----
-  vec_months <- data_frame(month = seq(var_date_from, var_date_to, "months"))
+  vec_months <- data_frame(month = seq(date_from, date_to, "months"))
   
   tbl_companies_aggr <- tbl_companies %>% 
     group_by(code_new,

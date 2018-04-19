@@ -1,4 +1,4 @@
-home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/R\ scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 
 source("project.R")
@@ -34,9 +34,9 @@ tbl_nace_qty <- tbl_nace %>%
 lst_nace_recoding <- roll_up_nace_tree(tbl_nace_qty, 50000)
 
 tbl_companies %<>% 
-  left_join(tbl_dictionary, by = c("sbi_full" = "code"))
+  left_join(lst_nace_recoding$tbl_dictionary, by = c("sbi_full" = "code"))
 
-# Aggregate company data by month active and aggregated SBI code
+# Spread out active companies by month and group by SBI code ----
 if(config$process_aggregate){
   tbl_companies_aggr <- aggregate_companies(tbl_companies, lst_nace_recoding$tbl_dictionary)
   saveRDS(tbl_companies_aggr, file = paste0(dir_input, "/companies_aggr.RDS"))
@@ -48,7 +48,7 @@ tbl_companies_aggr %<>%
   rename(code = code_new) %>% 
   left_join(tbl_nace, by = "code")
 
-# Plot starting and stopping ----
+# Plot number of companies per NACE code by month ----
 ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
   geom_area(col = col_graydon[2], fill = col_graydon[2], alpha = .6) +
   facet_wrap(~ code) +
@@ -56,12 +56,12 @@ ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
   labs(x = "", y = "# Companies") +
   theme_graydon("grid")
 
-# Number of companies per nace code
+# Number of companies per NACE code ----
 tbl_companies_by_nace <- tbl_companies_aggr %>% 
   group_by(code, description) %>% 
   summarise(qty_companies = sum(qty_companies))
 
-# Display single nace
+# Display number of companies for a single NACE by month ----
 tbl_companies_aggr %>% 
   filter(code == config$code_nace) %>% 
 ggplot(aes(x = month, y = qty_companies)) +
@@ -119,64 +119,61 @@ ts_companies_train = subset(ts_companies_clean, end = length(ts_companies_clean)
 
 # Set up data frame for error evaluation
 tbl_model_error <- data_frame(method = as.character(), MASE = as.integer())
+library(rlist)
 
 # Mean forecasting (mean of all observations)
 fit_mean <- meanf(ts_companies_train, h = months_forecast)
 result_fit <- evaluate_forecast(fit_mean, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list(result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Naive
 fit_naive <- naive(ts_companies_train, h = months_forecast)
 result_fit <- evaluate_forecast(fit_naive, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Simple exponential smoothing
 fit_ses <- ses(ts_companies_train, h = months_forecast)
 result_fit <- evaluate_forecast(fit_ses, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Holt’s linear trend
 fit_holt <- holt(ts_companies_train, h = months_forecast)
 result_fit <- evaluate_forecast(fit_holt, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Holt-Winters seasonal method - Multiplicative
 fit_hw <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicative")
 result_fit <- evaluate_forecast(fit_hw, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Holt-Winters seasonal method - Additive
 fit_hw <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
-# Errors, Trend, and Seasonality (ETS)
+# Errors, Trend, and Seasonality (ETS) ----
 model_ets <- ets(ts_companies_train)
 fit_ets <- forecast(model_ets)
 result_fit <- evaluate_forecast(fit_ets, ts_companies_clean)
-result_fit$p_forecast
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
 tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
-# Review MASE ----
-tbl_model_error %<>% mutate(is_best = MASE == min(MASE))
-
-ggplot(tbl_model_error, aes(x = reorder(method, MASE), y = MASE)) +
-  geom_col(aes(fill = is_best)) +
-  geom_text(aes(label = round(MASE, 2)), 
-            hjust = -.1) +
-  scale_fill_graydon() +
-  coord_flip() +
-  labs(x = "") +
-  guides(fill = FALSE) +
-  theme_graydon("vertical")
+# ARIMA (automatic)
+model_auto.arima <- auto.arima(ts_companies_train)
+fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
+result_fit <- evaluate_forecast(fit_auto.arima, ts_companies_clean)
+lst_plots <- list.append(lst_plots, result_fit$p_forecast)
+tbl_model_error <- rbind(tbl_model_error, result_fit$mase)
 
 # Making stationary ----
+# White noise?
+Box.test(ts_companies_clean, lag = 12, type = "Ljung") # Nope
 
 # Removing trends: differencing
 ts_companies_diff <- diff(ts_companies_clean)
@@ -192,10 +189,18 @@ p_clean <- autoplot(ts_companies_clean,
 
 grid.arrange(p_clean, p_diff)
 
+# White noise?
+Box.test(ts_companies_diff, lag = 12, type = "Ljung") # Nope
+
 # Removing seasonality
+ggAcf(ts_companies_clean)
+
 ts_test <- ts_companies_diff + 1000
 
 ts_companies_deseason <- diff(log(ts_test), lag = 12)
+
+Box.test(ts_companies_diff, lag = 12, type = "Ljung") # Nope
+Pacf(diff(ts_test, lag = 12))
 
 p_deseason <- autoplot(ts_companies_deseason, 
                     ts.colour = col_graydon[1], 
@@ -208,8 +213,31 @@ grid.arrange(p_clean, p_deseason)
 decomp <- stl(ts_companies_clean, s.window = "periodic")
 plot(decomp)
 
-# ARIMA (automatic)
-model_auto.arima <- auto.arima(ts_companies_train)
-result_fit <- evaluate_forecast(fit_ets, ts_companies_clean)
+# Review MASE ----
+tbl_model_error %>% 
+  mutate(is_best = MASE == min(MASE)) %>% 
+ggplot(aes(x = reorder(method, MASE), y = MASE)) +
+  geom_col(aes(fill = is_best)) +
+  geom_text(aes(label = round(MASE, 2)), 
+            hjust = -.1) +
+  scale_fill_graydon() +
+  coord_flip() +
+  labs(x = "") +
+  guides(fill = FALSE) +
+  theme_graydon("vertical")
+
+# Plot all forecast methods ----
+do.call("grid.arrange", c(lst_plots, ncol=4))
+
+# Plot of the best performing forecast method ----
+no_best <- (tbl_model_error %>% 
+              mutate(row_no = row_number()) %>% 
+              mutate(is_best = MASE == min(MASE)) %>% 
+              filter(is_best))$row_no 
+
+lst_plots[no_best]  
+
+# Do best method forecast for longer period ----
+fit_hw <- hw(ts_companies_train, h = 60, seasonal = "additive")
+result_fit <- evaluate_forecast(fit_hw, ts_companies_clean)
 result_fit$p_forecast
-tbl_model_error <- rbind(tbl_model_error, result_fit$mase)

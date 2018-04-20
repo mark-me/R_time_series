@@ -5,6 +5,7 @@ process_aggregate: FALSE
 # Analysis variables
 date_start: "1997-01-01"
 date_end: "2017-10-01"
+qty_companies_in_rolledup: 50000
 code_nace: "47"
 months_forecast: 12
 

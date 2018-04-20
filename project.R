@@ -212,8 +212,8 @@ end_of_month <- function(date) {
 col_graydon <- c("#00545D", "#EB6E08", "#858587", "#8BB0DE", "#186FA7", "#474646", "#BABFC1", "#000000", "#3AA2DF")
 
 # Graydon theming ----
-font_import(pattern = "Roboto", prompt = FALSE)
-loadfonts(device="win")
+#font_import(pattern = "Roboto", prompt = FALSE)
+#loadfonts(device="win")
 
 theme_graydon <- function(type = c("grid", "horizontal", "blank")) {
   

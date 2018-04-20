@@ -1,19 +1,22 @@
 ---
-title: "Time series forecasting: sector growth"
-output: html_document
-  html_notebook: 
-    code_folding: hide
-    number_sections: yes
-    theme: flatly
+title: "Sector growth"
+author: "Time series forecasting" 
+output:
+  html_document:
+    css: custom-release.css
+    df_print: paged
+    number_sections: no
     toc: yes
-    toc_depth: 2
-    toc_float: true
-    collapsed: false
+    toc_float: yes
+  html_notebook:
+    css: custom-release.css
+    toc: yes
+editor_options:
+  chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-home_dir <- "~/R scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -36,28 +39,29 @@ var_date_to <- as.Date(config$date_end)     # End date of time series
 months_forecast <- config$months_forecast   # Number of months in forecast
 ```
 
-## Loading and preparing data
+# Loading and preparing data
 
 The used configuration file, config.yml:
 ```{r Show config.yml file, echo = FALSE}
 cat(readLines("config.yml"), sep = '\n')
 ```
 
-The branche SBI code hierarchy and company data is loaded.
+The company data and SBI code hierarchy is loaded:
 ```{r Load data, collapse=TRUE}
-# Import branche hierarchy data ----
-tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"), 
-                      stringsAsFactors = FALSE)
-
-# Import & transform company data ----
+# Import & transform company data
 tbl_companies <- prep_companies(config$process_companies, 
                                 var_date_from, 
                                 var_date_to)
+# Import branche hierarchy data
+tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"), 
+                      stringsAsFactors = FALSE)
 ```
 
-### Rolling up the NACE hierarchy
+## Rolling up the NACE hierarchy
 
-The number of companies is aggregated through the HACE hierarchy so they will contain enough companies to do forecasting
+The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the NACE hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
+
+To get this mechanism working the first need to add the number of companies for each of the NACE codes to the complete NACE hierarchy.
 ```{r Add the number of companies to the nace hierarchy}
 # Add number of companies to the NACE hierarchy, so all 
 tbl_nace_qty <- tbl_nace %>% 
@@ -66,8 +70,9 @@ tbl_nace_qty <- tbl_nace %>%
   summarise(qty = n_distinct(id_giant, na.rm = TRUE)) %>% 
   ungroup() 
 ```
-The hierarchy now looks like below: many sectors with a small number of companies:
-```{r Display NACE hierarchy before roll-up, collapse = TRUE, warning = FALSE}
+
+This is how the NACE hierarchy looks now; many sectors with a small number of companies:
+```{r Display NACE hierarchy before roll-up, echo = FALSE, warning = FALSE}
 tbl_nodes <- data_frame(code = with(tbl_nace_qty, unique(c(code, code_parent)))) %>% 
   left_join(tbl_nace_qty, by = "code") %>% 
   rename(code_sector = code)
@@ -92,15 +97,16 @@ ggraph(graph, layout = "nicely") +
 rm(graph, tbl_nodes, tbl_links)
 ```
 
-Now the actual roll up is done after which the 'translation table' is added to the table with companies.
+Now the actual roll up is done after which the 'translation table' is joined to the table with companies table:
 ```{r Rolling up NACE hierarchy}
 lst_nace_recoding <- roll_up_nace_tree(tbl_nace_qty, config$qty_companies_in_rolledup)
 
 tbl_companies %<>% 
   left_join(lst_nace_recoding$tbl_dictionary, by = c("sbi_full" = "code"))
 ```
-Which results in the hierarchy below, containing far less sectors with a higher number of companies, making forecasting success more likely:
-```{r Plot of rotbllled up NACE hierarchy, collapse = TRUE, warning = FALSE}
+
+That results in the hierarchy below, containing far less sectors with a higher number of companies, making forecasting success more likely:
+```{r Plot of rotbllled up NACE hierarchy, echo = FALSE, warning = FALSE}
 tbl_nace_qty <- tbl_nace %>% 
   left_join(lst_nace_recoding$tbl_rolled_up, by = "code") %>% 
   select(code, code_parent, layer_no = layer_no.x, qty = qty_sticky)
@@ -129,12 +135,19 @@ ggraph(graph, layout = "nicely") +
 ```{r Clean up stuff, echo=FALSE}
 rm(graph, tbl_nodes, tbl_links)
 ```
+
+## Spreading companies through time
+
+A time series is a series of data points indexed in time order. In  this step the companies are put in each month within a time frame, specified by the config file, according to their date of establishment and discontinuation.
+
+Depending on the processing configuration, the data is processed *or* pre-processed is loaded; after which NACE descriptions are added.
 ```{r Aggregate the number of companies and time-spread}
-# Depending on the processing configuration the data is 
+# Depending on the processing configuration the data is processed
 if(config$process_aggregate){
   tbl_companies_aggr <- aggregate_companies(tbl_companies, lst_nace_recoding$tbl_dictionary)
   saveRDS(tbl_companies_aggr, file = paste0(dir_input, "/companies_aggr.RDS"))
 } else {
+  # or pre-processed is loaded
   tbl_companies_aggr <- read_rds(paste0(dir_input, "/companies_aggr.RDS"))
 }
 
@@ -143,9 +156,11 @@ tbl_companies_aggr %<>%
   left_join(tbl_nace, by = "code")
 ```
 
+# Initial exploration
 
 ## Development of the number of companies per sector
 
+Now we can take a quick look at the development number of companies in each sector:
 ```{r Plot number of companies per NACE code by month}
 ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
   geom_area(col = col_graydon[2], fill = col_graydon[2], alpha = .6) +
@@ -154,9 +169,11 @@ ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
   labs(x = "", y = "# Companies") +
   theme_graydon("grid")
 ```
+The sector with NACE code `r config$code_nace` looks like an interesting candidate, because it has no obvious trend, which would make it more challenging to forecast. 
 
 ## Development of retail sector
 
+When zooming in on this NACE code we see how interesting this is in terms of rises and drops in number of companies:
 ```{r pressure, echo=FALSE}
 tbl_companies_aggr %>% 
   filter(code == config$code_nace) %>% 
@@ -168,64 +185,155 @@ ggplot(aes(x = month, y = qty_companies)) +
   theme_graydon("grid")
 ```
 
-## Creating and cleaning the time series
+# Creating and cleaning the time series
 
-```{r Creating and cleaning time series}
-# Timeseries exploration ----
+The library **forecast** contains all kinds of time serie goodies and forecasting functions. The **ggfortify** library provides some stuff for plotting and converting time series.
+```{r Loading time series packages}
 library(forecast)
 library(ggfortify)
+```
 
-# Get selected nace code
+First, the data of the sector we want to explore and forecast is set apart:
+```{r Getting specific nace code}
 tbl_companies_code <- tbl_companies_aggr %>% filter(code == config$code_nace)
 var_sector <- (tbl_nace %>% filter(code == config$code_nace))$description
+```
 
-# Create time series
+Then a *ts* object is created from this data, by the *ts()* function. The *ts* object is created by :
+
+* a vector with the quantities per month (in this case), 
+* the *frequency* i.e. number of units per year (in this case 12, for months) and 
+* the date from which the time series should start
+
+```{r Create time series}
 ts_companies <- ts(tbl_companies_code$qty_companies, 
                    frequency = 12, 
                    start = c(year(var_date_from), month(var_date_from)) )
+```
 
-# Clean time series
+## Cleaning the time series
+
+The time series is cleaned by using the *ts_clean* function. This function will remove outliers and replace missing values.
+```{r Cleaning time series}
 ts_companies_clean <- tsclean(ts_companies)
 ```
 
-### Compare original and cleaned time series
+When putting the original time series next to the cleaned one you can see the differences:
 ```{r Compare original and cleaned time series}
-# Plot imported vs. cleaned time series
 plot_time_series(list(ts_companies, ts_companies_clean),
                  c("Read", "Cleaned"))
 ```
 
-## Forecasting
+## Time series decomposition
 
-### Create a training set
+Thus we think of a time series as comprising three components: a trend-cycle component, a seasonal component, and a remainder component (containing anything else in the time series).
+
+## Determine seasonality
+
+We can use a seasonality plot to see whether there is a systemtic skew of timeseries values in certain systemic parts of the year. A subset of years is taken the plot doesn't get overcrowded. It seems all years are almost circular; so there seems no seasonality.
+```{r Plot seasonality}
+ts_companies_subset <- window(ts_companies_clean, start = 2012, end = 2017)
+
+ggseasonplot(ts_companies_subset, polar = TRUE, main ="") +
+  scale_color_graydon() +
+  theme_graydon("grid")
+
+rm(ts_companies_subset)
+```
+
+# Forecasting
+
+## Create a training set
 ```{r Create a training set}
 ts_companies_train = subset(ts_companies_clean, end = length(ts_companies_clean) - months_forecast)
 ```
 
-### Create forecast models
-```{r Create forecast models}
-fit_mean <- meanf(ts_companies_train, h = months_forecast)    # Mean forecasting (mean of all observations)
-fit_naive <- naive(ts_companies_train, h = months_forecast)   # Naive
-fit_snaive <- snaive(ts_companies_train, h = months_forecast) # Naive seasonal
+## Forecasting modeling techniques
+
+Three kinds of models are tested here:
+
+* Exponential smoothing forecast models
+    - Use weighted averages of past observations, with the weights decaying exponentially as the observations get older; the more recent the observation, the higher the associated weight. This framework generates reliable forecasts quickly and for a wide range of time series, which is a great advantage and of major importance to applications in business.
+* ARIMA models
+  * Auto ARIMA model
+
+### Mean forecasting
+
+The mean forecast model is kind of stupid: make the mean of the total time series the forecast for all future time points.
+```{r Forecast model - mean}
+fit_mean <- meanf(ts_companies_train, h = months_forecast)
+```
+
+### Naive forecasting
+
+Naive forecasting is a technique in which the last period's actuals are used as this period's forecast, without adjusting them or attempting to establish causal factors. It is used only for comparison with the forecasts generated by the better techniques. In R we use the *naive* function. There is also a seasonal version of the naive forecast where the forecasts equal to last value from same season; for this the *snaive* function is used
+```{r Forecast model - naive}
+fit_naive <- naive(ts_companies_train, h = months_forecast)
+fit_snaive <- snaive(ts_companies_train, h = months_forecast)
+```
+
+### Drift forecasting
+
+Random walk with drift forecasting, the forecasts equal to last value plus average change. This is done with the *rwf* function.
+```{r Forecast model - drift}
+fit_drift <- rwf(ts_companies_train, drift = TRUE, h = months_forecast) 
+```
+
+### Single Exponential Smoothing
+
+The Single Exponential Smoothing forecast is the old one plus an adjustment for the error that occurred in the last forecast. This method is suitable for forecasting data with no clear trend or seasonal pattern. This is done with the *ses* function.
+```{r Forecast model - SES}
 fit_ses <- ses(ts_companies_train, h = months_forecast)       # Simple exponential smoothing
+```
+
+### Holt’s linear trend forecasting
+
+Holt’s linear trend forecasting extends Simple Exponential Smoothing to allow the forecasting of data with a trend. This method involves a forecast equation and two smoothing equations (one for the level and one for the trend). This is done with the *holt* function.
+```{r Forecast model - Holt’s linear trend}
 fit_holt <- holt(ts_companies_train, h = months_forecast)     # Holt’s linear trend
+```
+
+### Holt-Winters’ seasonal forecasting
+
+Holt-Winters’ seasonal forecasting extended Holt’s method to capture seasonality. The Holt-Winters seasonal method comprises the forecast equation and three smoothing equations — one for the level, one for the trend and one for the seasonal component. There are two variations to this method that differ in the nature of the seasonal component. The **additive** method is preferred when the seasonal variations are roughly constant through the series, while the **multiplicative** method is preferred when the seasonal variations are changing proportional to the level of the series.
+```{r Forecast model - Holt-Winters’ seasonal}
 fit_hw_m <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicative")  # Holt-Winters multiplicative
 fit_hw_a <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")        # Holt-Winters additive
+```
+
+
+
+Seasonal Component
+
+| Trend Component     | Seasonal Component	    |  	        |        |
+| :-----              | :---:	| :------:  	|  :---:  |
+|                     | N (None)	| A (Additive)	| M (Multiplicative)|
+|N  (None)            | (N,N) | (N,A)	      | (N,M)     |
+|A  (Additive)        | (A,N)	| (A,A)	      | (A,M)     |
+|Ad (Additive damped) |	(Ad,N)|	(Ad,A)	    | (Ad ,M)   |
+
+
+An alternative to estimating the parameters by minimizing the sum of squared errors is to maximize the “likelihood”. The likelihood is the probability of the data arising from the specified model. Thus, a large likelihood is associated with a good model. 
+```{r Forecast model - ets}
 model_ets <- ets(ts_companies_train)                # Errors, Trend, and Seasonality (ETS) 
 fit_ets <- forecast(model_ets, h = months_forecast)
+```
+
+
+```{r Forecast model - ses}
 model_auto.arima <- auto.arima(ts_companies_train)  # ARIMA (automatic)
 fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
 ```
 
-### Evaluate forecast models by MASE
+## Evaluate forecast models by MASE
 ```{r Evaluate forecast models}
-lst_fitted <- list(fit_mean, fit_naive, fit_snaive, fit_holt, fit_hw_m, fit_hw_a, 
+lst_fitted <- list(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
                    fit_ets, fit_ses, fit_auto.arima)
 lst_evaluations <- lapply(lst_fitted, evaluate_forecast, ts_companies_clean) 
 ```
 
 ### All forecast model results
-```{r Plot all forecast methods}
+```{r Plot all forecast methods, warning=FALSE}
 lst_forecast_plots <- sapply(lst_evaluations, "[", 1)
 do.call("grid.arrange", c(lst_forecast_plots, ncol=3))
 ```
@@ -256,7 +364,7 @@ no_best <- (tbl_forecast_mase %>%
 lst_forecast_plots[no_best] 
 ```
 
-# Apply best forecasting method
+## Apply best forecasting method
 ```{r Use best method forecast for longer period}
 fit_hw_a <- hw(ts_companies_train, h = 60, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw_a, ts_companies_clean)

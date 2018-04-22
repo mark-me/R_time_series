@@ -245,7 +245,7 @@ rm(ts_companies_subset)
 
 ## Create a training set
 ```{r Create a training set}
-ts_companies_train = subset(ts_companies_clean, end = length(ts_companies_clean) - months_forecast)
+ts_companies_train <- subset(ts_companies_clean, end = length(ts_companies_clean) - months_forecast)
 ```
 
 ## Forecasting modeling techniques
@@ -283,65 +283,87 @@ fit_drift <- rwf(ts_companies_train, drift = TRUE, h = months_forecast)
 
 The Single Exponential Smoothing forecast is the old one plus an adjustment for the error that occurred in the last forecast. This method is suitable for forecasting data with no clear trend or seasonal pattern. This is done with the *ses* function.
 ```{r Forecast model - SES}
-fit_ses <- ses(ts_companies_train, h = months_forecast)       # Simple exponential smoothing
+fit_ses <- ses(ts_companies_train, h = months_forecast)
 ```
 
 ### Holt’s linear trend forecasting
 
 Holt’s linear trend forecasting extends Simple Exponential Smoothing to allow the forecasting of data with a trend. This method involves a forecast equation and two smoothing equations (one for the level and one for the trend). This is done with the *holt* function.
 ```{r Forecast model - Holt’s linear trend}
-fit_holt <- holt(ts_companies_train, h = months_forecast)     # Holt’s linear trend
+fit_holt <- holt(ts_companies_train, h = months_forecast) 
 ```
 
 ### Holt-Winters’ seasonal forecasting
 
 Holt-Winters’ seasonal forecasting extended Holt’s method to capture seasonality. The Holt-Winters seasonal method comprises the forecast equation and three smoothing equations — one for the level, one for the trend and one for the seasonal component. There are two variations to this method that differ in the nature of the seasonal component. The **additive** method is preferred when the seasonal variations are roughly constant through the series, while the **multiplicative** method is preferred when the seasonal variations are changing proportional to the level of the series.
 ```{r Forecast model - Holt-Winters’ seasonal}
-fit_hw_m <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicative")  # Holt-Winters multiplicative
-fit_hw_a <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")        # Holt-Winters additive
+fit_hw_m <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicative")
+fit_hw_a <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")
 ```
-
-
 
 Seasonal Component
 
-| Trend Component     | Seasonal Component	    |  	        |        |
+| Trend Component     | N (None)	| A (Additive)	| M (Multiplicative)|
 | :-----              | :---:	| :------:  	|  :---:  |
-|                     | N (None)	| A (Additive)	| M (Multiplicative)|
 |N  (None)            | (N,N) | (N,A)	      | (N,M)     |
 |A  (Additive)        | (A,N)	| (A,A)	      | (A,M)     |
 |Ad (Additive damped) |	(Ad,N)|	(Ad,A)	    | (Ad ,M)   |
 
-
 An alternative to estimating the parameters by minimizing the sum of squared errors is to maximize the “likelihood”. The likelihood is the probability of the data arising from the specified model. Thus, a large likelihood is associated with a good model. 
 ```{r Forecast model - ets}
-model_ets <- ets(ts_companies_train)                # Errors, Trend, and Seasonality (ETS) 
+model_ets <- ets(ts_companies_train)
 fit_ets <- forecast(model_ets, h = months_forecast)
 ```
 
 
 ```{r Forecast model - ses}
-model_auto.arima <- auto.arima(ts_companies_train)  # ARIMA (automatic)
+model_auto.arima <- auto.arima(ts_companies_train)
 fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
 ```
 
-## Evaluate forecast models by MASE
+## Evaluating the forecast models
+
+Forecasting models is done by the *evaluate_forecast()* function, from the *forecast_functions.R*, which returns a plot ,with the forecasted data points with their confidence intervals and the actual dataset, and also a data frame with the error measurements of the forecast test set.  
+
+Here the *evaluate_forecast()* is applied to all the fitted models which were put in a list first. The result is put in *lst_evaluation*.
 ```{r Evaluate forecast models}
 lst_fitted <- list(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
                    fit_ets, fit_ses, fit_auto.arima)
 lst_evaluations <- lapply(lst_fitted, evaluate_forecast, ts_companies_clean) 
 ```
 
+```{r Remove fitted models, echo=FALSE}
+rm(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
+   fit_ets, fit_ses, fit_auto.arima)
+```
+
 ### All forecast model results
+
+For all models the time series and their forecasted data points with associated confidence intervals of 95% and 80% are plotted. To achieve this, a list of the plots created by retrieving them from the *lst_evaluations* items, of which the plot are the first subitem. Then this list of plots are put into a *grid.arrange()* function, which arranges multiple ggplots in one grid which is displayed as one plot. 
 ```{r Plot all forecast methods, warning=FALSE}
 lst_forecast_plots <- sapply(lst_evaluations, "[", 1)
 do.call("grid.arrange", c(lst_forecast_plots, ncol=3))
 ```
 
 ### Compare models based on MASE evaluation
+
+There are many ways in which to meaure the model's accuracy. The measures which were determined here are:
+
+* ME: Mean Error
+* RMSE: Root Mean Squared Error
+* MAE: Mean Absolute Error
+* MPE: Mean Percentage Error
+* MAPE: Mean Absolute Percentage Error
+* MASE: Mean Absolute Scaled Error
+* ACF1: Autocorrelation of errors at lag 1
+* Theil's U: accuracy measure that emphasises the importance of large errors (as in MSE) as well as providing a relative basis for comparison with naïve forecasting methods.
+
+I prefer the MASE accuracy indicator because it can be applied to time series with negative values (which is less important here), and does not suffer from problems (other accuracy indicators suffer from: https://en.wikipedia.org/wiki/Mean_absolute_scaled_error.
+
+The best forecasting method is highlighted automatically here by creating a variable that indicates which row contains the lowest MASE value.
 ```{r Plot MASE of all forecast models}
-# Review MASE
 tbl_forecast_mase <- do.call("rbind", sapply(lst_evaluations, "[", 2))
+
 tbl_forecast_mase %>% 
   mutate(is_best = MASE == min(MASE)) %>% 
   ggplot(aes(x = reorder(method, MASE), y = MASE)) +
@@ -354,18 +376,23 @@ tbl_forecast_mase %>%
   guides(fill = FALSE) +
   theme_graydon("vertical")
 ```
+The best forecasting method seems to be Holt-Winter's additive method.
 
 ### The best performing forecast method
-```{r Plot of the best performing forecast method}
+
+Now it's established Holt-Winter's additive method performs best, we will take another look at it's performance:
+```{r Plot of the best performing forecast method, warning=FALSE}
 no_best <- (tbl_forecast_mase %>% 
               mutate(row_no = row_number()) %>% 
               mutate(is_best = MASE == min(MASE)) %>% 
               filter(is_best))$row_no 
-lst_forecast_plots[no_best] 
+lst_forecast_plots[no_best]$p_forecast
 ```
 
 ## Apply best forecasting method
-```{r Use best method forecast for longer period}
+
+Now the best forecasting method is found for this time series, it is applied for a longer time period (5 years).
+```{r Use best method forecast for longer period, warning=FALSE}
 fit_hw_a <- hw(ts_companies_train, h = 60, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw_a, ts_companies_clean)
 result_fit$p_forecast

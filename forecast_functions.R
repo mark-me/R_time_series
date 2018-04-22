@@ -24,12 +24,15 @@ evaluate_forecast <- function(forecast_model, ts_full){
     theme_graydon("grid")
   
   # Row of data for the method, and MASE of the test time series
-  mase <- data.frame(method = forecast_model$method,
-                     MASE = accuracy(forecast_model, ts_full)["Test set", "MASE"])
-  
+  error_measure <- data.frame(value = accuracy(forecast_model, ts_full)["Test set",])
+  error_measure %<>% 
+    mutate(measure = row.names(error_measure)) %>% 
+    spread(measure, value) %>% 
+    mutate(method = forecast_model$method)
+
   # Returning a list with the plot and MASE
   list(p_forecast = p_forecast,
-       mase = mase)
+       error_measures = error_measure)
 }
 
 # Plot for comparing time series ----

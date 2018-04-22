@@ -60,3 +60,15 @@ plot_time_series <- function(lst_timeseries, vec_names){
   return(p_plot)  
 }
 
+evaluate_forecasts <- function(lst_fitted_models, ts_test){
+  
+  lst_evaluations <- lapply(lst_fitted_models, evaluate_forecast, ts_test)
+  
+  tbl_accuracy <- do.call("rbind", sapply(lst_evaluations, "[", 2))
+  
+  tbl_accuracy %<>%
+    gather(key = "measure", value = "value", -method) %>% 
+    group_by(measure) %>% 
+    mutate(is_best = value == max(value)) %>% 
+    ungroup()
+}

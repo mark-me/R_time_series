@@ -46,6 +46,8 @@ evaluate_forecasts <- function(lst_fitted_models,
   
   lst_evaluations <- lapply(lst_fitted_models, evaluate_forecast, ts_test)
   
+  lst_plot_forecast <- lapply(lst_evaluations, "[", 1)
+  
   tbl_accuracy <- do.call("rbind", sapply(lst_evaluations, "[", 2))
   
   tbl_accuracy %<>%
@@ -67,7 +69,8 @@ evaluate_forecasts <- function(lst_fitted_models,
     guides(fill = FALSE) +
     theme_graydon("vertical")
   
-  return (list(tbl_accuracy = tbl_accuracy, 
+  return (list(lst_plot_forecast = lst_plot_forecast,
+               tbl_accuracy = tbl_accuracy, 
                p_accuracy = p_accuracy))
 }
 
@@ -95,3 +98,30 @@ plot_time_series <- function(lst_timeseries, vec_names){
   
   return(p_plot)  
 }
+
+# Decomposition of time series ----
+#'
+#' @param ts_data Time series data
+#' @return A ggplot
+decompose_ts <- function(ts_data) {
+  df_stl <- ts_data %>% 
+    stl(t.window=13, s.window="periodic", robust=TRUE)
+  
+  df_stl <- fortify(df_stl$time.series)
+  
+  df_stl %<>% 
+    gather(key = "component", value = "value", -Index) %>% 
+    mutate(component = ordered(component, c("trend", "seasonal", "remainder")))
+  
+  p_stl <- ggplot(df_stl, aes(x = Index, y = value, col = component)) +
+    geom_line() +
+    facet_wrap(~component, scales = "free", ncol = 1) +
+    scale_y_continuous(labels = format_number) +
+    scale_color_graydon() +
+    labs(x = "", y = "") +
+    guides(col = FALSE) +
+    theme_graydon("grid")
+  
+  return(p_stl)
+}
+

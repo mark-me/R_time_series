@@ -16,7 +16,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-home_dir <- "~/R scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -226,7 +226,14 @@ plot_time_series(list(ts_companies, ts_companies_clean),
 
 ## Time series decomposition
 
-Thus we think of a time series as comprising three components: a trend-cycle component, a seasonal component, and a remainder component (containing anything else in the time series).
+We can see a variety of patterns in time series. To understand and or model a time series, it is often helpful to split a time series into several components, each of which represents an underlying pattern category. These categories are:
+
+* Level - height of the time series
+* Trend - Upward or downward moving mean
+* Seasonality - Variations at specific regular intervals less than a year (e.g.: quarterly). If it does not vary with the level: additive, if it does: multiplicative.
+* Cycles - Rises and falls without fixed period, typically longer than seasonality and higher variability
+
+* Stationary - Constant mean (i.e. no trend), no changes in variability and frequency. So: no trend, no seasonality and no cycles
 
 ## Determine seasonality
 
@@ -237,15 +244,27 @@ ts_companies_subset <- window(ts_companies_clean, start = 2012, end = 2017)
 ggseasonplot(ts_companies_subset, polar = TRUE, main ="") +
   scale_color_graydon() +
   theme_graydon("grid")
-
-rm(ts_companies_subset)
 ```
+
+## STL decomposition
+
+STL is an acronym for Seasonal and Trend decomposition using Loess; Loess is a method for estimating nonlinear relationships. The method breaks down a time series in a trend-cycle component (shorthandidly called 'trend' here) and a seasonal component. The 'remainder' component is what is left after the trend and seasonal components are removed.
+```{r}
+p_stl <- decompose_ts(ts_companies_clean)
+p_stl
+```
+Note how the scales of each of the componens differ, this is because each graph is additive: add each component and you would get the original time series values.
+
+In this case the remainder does not appear to be stationary since there is variations in spikes. It seems there is something more going on in this time series.
 
 # Forecasting
 
 ## Create a training set
+
+To verify how well the forecast models perform we build the models on a subset of the time series that stops months before the actual time series. The forecast that is created can afterwards be compared to the original time series. We create the subset with... the *subset()* function:
 ```{r Create a training set}
-ts_companies_train <- subset(ts_companies_clean, end = length(ts_companies_clean) - months_forecast)
+ts_companies_train <- subset(ts_companies_clean, 
+                             end = length(ts_companies_clean) - months_forecast)
 ```
 
 ## Forecasting modeling techniques
@@ -303,19 +322,19 @@ fit_hw_a <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")
 
 ### Exponential Smoothing State Space Model
 
-So far we've seen 
+So far we've seen:
 
-(N,N)	=	simple exponential smoothing
-(A,N)	=	Holts linear method
-(M,N)	=	Exponential trend method
-(Ad,N)	=	additive damped trend method
-(Md,N)	=	multiplicative damped trend method
-(A,A)	=	additive Holt-Winters method
-(A,M)	=	multiplicative Holt-Winters method
-(Ad,M)	=	Holt-Winters damped method
+* (N,N)	=	simple exponential smoothing
+* (A,N)	=	Holts linear method
+* (M,N)	=	Exponential trend method
+* (Ad,N)	=	additive damped trend method
+* (Md,N)	=	multiplicative damped trend method
+* (A,A)	=	additive Holt-Winters method
+* (A,M)	=	multiplicative Holt-Winters method
+* (Ad,M)	=	Holt-Winters damped method
 
+                                  Seasonal Component
 
-|||Seasonal Component|
 | Trend Component     | N (None)	| A (Additive)	| M (Multiplicative)|
 | :-----              | :---:	| :------:  	|  :---:  |
 |N  (None)            | (N,N) | (N,A)	      | (N,M)     |
@@ -338,24 +357,19 @@ fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
 
 ## Evaluating the forecast models
 
-Forecasting models is done by the *evaluate_forecast()* function, from the *forecast_functions.R*, which returns a plot ,with the forecasted data points with their confidence intervals and the actual dataset, and also a data frame with the error measurements of the forecast test set.  
+Forecasting models is done by the *evaluate_forecasts()* function, from the *forecast_functions.R*. This function can take a list of all the fitted models and the complete time series *ts_companies_clean*. The function returns a list with:
 
-Here the *evaluate_forecast()* is applied to all the fitted models which were put in a list first. The result is put in *lst_evaluation*.
+* a plot ,with the forecasted data points with their confidence intervals and the actual dataset, 
+* a data frame with the error measurements of the forecast test sets and
+* a plot of with the performance of the models for each accuracy measurement type.
+
 ```{r Evaluate forecast models}
 lst_fitted <- list(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
                    fit_ets, fit_ses, fit_auto.arima)
 
 lst_evaluations <- evaluate_forecasts(lst_fitted, ts_companies_clean)
-
-# Displaying the accuracy measures in a readable format
-lst_evaluations$tbl_accuracy %>% 
-  group_by(method, measure) %>% 
-  summarise(value = max(value)) %>% 
-  ungroup() %>% 
-  rename(Measure = measure) %>% 
-  spread(method, value) %>% 
-  knitr::kable()
 ```
+
 
 ```{r Remove fitted models, echo=FALSE}
 rm(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
@@ -365,8 +379,8 @@ rm(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a,
 ### All forecast model results
 
 For all models the time series and their forecasted data points with associated confidence intervals of 95% and 80% are plotted. To achieve this, a list of the plots created by retrieving them from the *lst_evaluations* items, of which the plot are the first subitem. Then this list of plots are put into a *grid.arrange()* function, which arranges multiple ggplots in one grid which is displayed as one plot. 
-```{r Plot all forecast methods, fig.width=12, fig.height=30, warning=FALSE}
-lst_forecast_plots <- sapply(lst_evaluations, "[", 1)
+```{r Plot all forecast methods, fig.width=12, fig.height=15, warning=FALSE}
+lst_forecast_plots <- sapply(lst_evaluations$lst_plot_forecast, "[", 1) 
 do.call("grid.arrange", c(lst_forecast_plots, ncol=3))
 ```
 
@@ -383,33 +397,33 @@ There are many ways in which to meaure the model's accuracy. The measures which 
 * ACF1: Autocorrelation of errors at lag 1
 * Theil's U: accuracy measure that emphasises the importance of large errors (as in MSE) as well as providing a relative basis for comparison with naïve forecasting methods.
 
+```{r Table with the accuracy measurements for each of the models, echo=FALSE, eval=FALSE}
+lst_evaluations$tbl_accuracy %>% 
+  group_by(method, measure) %>% 
+  summarise(value = max(value)) %>% 
+  ungroup() %>% 
+  rename(Measure = measure) %>% 
+  spread(method, value) %>% 
+  knitr::kable()
+```
+
+In the plot of each accuracy measurement the best forecasting method is highlighted.
+```{r Plots with the model evaluations per accuracy measure, fig.width=12, fig.height=20}
+lst_evaluations$p_accuracy
+```
+
 I prefer the MASE accuracy indicator because it can be applied to time series with negative values (which is less important here), and does not suffer from problems (other accuracy indicators suffer from: https://en.wikipedia.org/wiki/Mean_absolute_scaled_error.
 
-The best forecasting method is highlighted automatically here by creating a variable that indicates which row contains the lowest MASE value.
-```{r Plot MASE of all forecast models}
-tbl_forecast_mase <- do.call("rbind", sapply(lst_evaluations, "[", 2))
-
-tbl_forecast_mase %>% 
-  mutate(is_best = MASE == min(MASE)) %>% 
-  ggplot(aes(x = reorder(method, MASE), y = MASE)) +
-  geom_col(aes(fill = is_best)) +
-  geom_text(aes(label = round(MASE, 2)), 
-            hjust = -.1) +
-  scale_fill_graydon() +
-  coord_flip() +
-  labs(x = "") +
-  guides(fill = FALSE) +
-  theme_graydon("vertical")
-```
-The best forecasting method seems to be Holt-Winter's additive method.
+Most accuracy measures seem to agree that the Holt-Winter's additive method is the best forecasting method.
 
 ### The best performing forecast method
 
 Now it's established Holt-Winter's additive method performs best, we will take another look at it's performance:
 ```{r Plot of the best performing forecast method, warning=FALSE}
-no_best <- (tbl_forecast_mase %>% 
+no_best <- (lst_evaluations$tbl_accuracy %>%
+              filter(measure == "MASE") %>% 
               mutate(row_no = row_number()) %>% 
-              mutate(is_best = MASE == min(MASE)) %>% 
+              mutate(is_best = value == min(value)) %>% 
               filter(is_best))$row_no 
 lst_forecast_plots[no_best]$p_forecast
 ```

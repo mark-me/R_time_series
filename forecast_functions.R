@@ -1,8 +1,8 @@
-# Function for displaying forecast and evaluating model ----
+# Function for displaying forecast and accuracy of a time series model ----
 #'
 #' @param forecast_model the fitted time series forecast model
 #' @param ts_full complete time series
-#' @return A list containing the plot with forecast points with full time series and a row with MASE
+#' @return A list containing the plot with forecast points with full time series and a row with accuracy measures
 evaluate_forecast <- function(forecast_model, ts_full){
   
   # Make data frames from the time series objects
@@ -35,6 +35,42 @@ evaluate_forecast <- function(forecast_model, ts_full){
        error_measures = error_measure)
 }
 
+# Function for displaying forecast and evaluating accuracy of multiple time series models ----
+#'
+#' @param lst_fitted_models a list of fitted time series forecast models
+#' @param ts_test the test set 
+#' @return A list containing the plot with forecast points with full time series and a data frame with accuracy measures
+evaluate_forecasts <- function(lst_fitted_models, 
+                               ts_test, 
+                               accuracy_measures = c("ACF1", "MAE", "MAPE", "MASE", "ME", "MPE", "RMSE", "Theil's U")){
+  
+  lst_evaluations <- lapply(lst_fitted_models, evaluate_forecast, ts_test)
+  
+  tbl_accuracy <- do.call("rbind", sapply(lst_evaluations, "[", 2))
+  
+  tbl_accuracy %<>%
+    gather(key = "measure", value = "value", -method) %>% 
+    group_by(measure) %>% 
+    filter(measure %in% accuracy_measures) %>% 
+    mutate(is_best = value == min(value)) %>% 
+    ungroup()
+  
+  p_accuracy <- ggplot(tbl_accuracy, 
+                       aes(x = reorder(method, value), y = value)) +
+    geom_col(aes(fill = is_best)) +
+    geom_text(aes(label = round(value, 2)), 
+              hjust = -.1) +
+    facet_wrap(~measure, scales = "free", ncol = 2) +
+    scale_fill_graydon() +
+    coord_flip() +
+    labs(x = "") +
+    guides(fill = FALSE) +
+    theme_graydon("vertical")
+  
+  return (list(tbl_accuracy = tbl_accuracy, 
+               p_accuracy = p_accuracy))
+}
+
 # Plot for comparing time series ----
 #'
 #' @param lst_timeseries list containing all time series
@@ -58,17 +94,4 @@ plot_time_series <- function(lst_timeseries, vec_names){
     theme_graydon("grid")
   
   return(p_plot)  
-}
-
-evaluate_forecasts <- function(lst_fitted_models, ts_test){
-  
-  lst_evaluations <- lapply(lst_fitted_models, evaluate_forecast, ts_test)
-  
-  tbl_accuracy <- do.call("rbind", sapply(lst_evaluations, "[", 2))
-  
-  tbl_accuracy %<>%
-    gather(key = "measure", value = "value", -method) %>% 
-    group_by(measure) %>% 
-    mutate(is_best = value == max(value)) %>% 
-    ungroup()
 }

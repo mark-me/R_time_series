@@ -16,7 +16,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/R scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -250,7 +250,7 @@ ts_companies_train <- subset(ts_companies_clean, end = length(ts_companies_clean
 
 ## Forecasting modeling techniques
 
-Three kinds of models are tested here:
+The  kinds of models are tested here:
 
 * Exponential smoothing forecast models
     - Use weighted averages of past observations, with the weights decaying exponentially as the observations get older; the more recent the observation, the higher the associated weight. This framework generates reliable forecasts quickly and for a wide range of time series, which is a great advantage and of major importance to applications in business.
@@ -301,13 +301,28 @@ fit_hw_m <- hw(ts_companies_train, h = months_forecast, seasonal = "multiplicati
 fit_hw_a <- hw(ts_companies_train, h = months_forecast, seasonal = "additive")
 ```
 
-Seasonal Component
+### Exponential Smoothing State Space Model
 
+So far we've seen 
+
+(N,N)	=	simple exponential smoothing
+(A,N)	=	Holts linear method
+(M,N)	=	Exponential trend method
+(Ad,N)	=	additive damped trend method
+(Md,N)	=	multiplicative damped trend method
+(A,A)	=	additive Holt-Winters method
+(A,M)	=	multiplicative Holt-Winters method
+(Ad,M)	=	Holt-Winters damped method
+
+
+|||Seasonal Component|
 | Trend Component     | N (None)	| A (Additive)	| M (Multiplicative)|
 | :-----              | :---:	| :------:  	|  :---:  |
 |N  (None)            | (N,N) | (N,A)	      | (N,M)     |
 |A  (Additive)        | (A,N)	| (A,A)	      | (A,M)     |
 |Ad (Additive damped) |	(Ad,N)|	(Ad,A)	    | (Ad ,M)   |
+|M (Multiplicative)   | (M,N) |	(M,A)	      | (M,M)     | 
+|Md (Multiplicative damped) | (Md,N) | (Md,A)  | (Md,M) |
 
 An alternative to estimating the parameters by minimizing the sum of squared errors is to maximize the “likelihood”. The likelihood is the probability of the data arising from the specified model. Thus, a large likelihood is associated with a good model. 
 ```{r Forecast model - ets}
@@ -329,7 +344,17 @@ Here the *evaluate_forecast()* is applied to all the fitted models which were pu
 ```{r Evaluate forecast models}
 lst_fitted <- list(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a, 
                    fit_ets, fit_ses, fit_auto.arima)
-lst_evaluations <- lapply(lst_fitted, evaluate_forecast, ts_companies_clean) 
+
+lst_evaluations <- evaluate_forecasts(lst_fitted, ts_companies_clean)
+
+# Displaying the accuracy measures in a readable format
+lst_evaluations$tbl_accuracy %>% 
+  group_by(method, measure) %>% 
+  summarise(value = max(value)) %>% 
+  ungroup() %>% 
+  rename(Measure = measure) %>% 
+  spread(method, value) %>% 
+  knitr::kable()
 ```
 
 ```{r Remove fitted models, echo=FALSE}
@@ -340,7 +365,7 @@ rm(fit_mean, fit_naive, fit_snaive, fit_drift, fit_holt, fit_hw_m, fit_hw_a,
 ### All forecast model results
 
 For all models the time series and their forecasted data points with associated confidence intervals of 95% and 80% are plotted. To achieve this, a list of the plots created by retrieving them from the *lst_evaluations* items, of which the plot are the first subitem. Then this list of plots are put into a *grid.arrange()* function, which arranges multiple ggplots in one grid which is displayed as one plot. 
-```{r Plot all forecast methods, warning=FALSE}
+```{r Plot all forecast methods, fig.width=12, fig.height=30, warning=FALSE}
 lst_forecast_plots <- sapply(lst_evaluations, "[", 1)
 do.call("grid.arrange", c(lst_forecast_plots, ncol=3))
 ```

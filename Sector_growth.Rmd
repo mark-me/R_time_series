@@ -251,7 +251,7 @@ ggseasonplot(ts_companies_subset, polar = TRUE, main ="") +
 STL is an acronym for Seasonal and Trend decomposition using Loess; Loess is a method for estimating nonlinear relationships. The method breaks down a time series in a trend-cycle component (shorthandidly called 'trend' here) and a seasonal component. The 'remainder' component is what is left after the trend and seasonal components are removed.
 ```{r}
 p_stl <- decompose_ts(ts_companies_clean)
-p_stl
+p_stl$p_stl
 ```
 Note how the scales of each of the componens differ, this is because each graph is additive: add each component and you would get the original time series values.
 
@@ -349,7 +349,7 @@ model_ets <- ets(ts_companies_train)
 fit_ets <- forecast(model_ets, h = months_forecast)
 ```
 
-
+### ARIMA
 ```{r Forecast model - ses}
 model_auto.arima <- auto.arima(ts_companies_train)
 fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
@@ -435,5 +435,49 @@ Now the best forecasting method is found for this time series, it is applied for
 fit_hw_a <- hw(ts_companies_train, h = 60, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw_a, ts_companies_clean)
 result_fit$p_forecast
+```
+
+# ARIMA forecasting
+
+## Differencing
+```{r AFC plot}
+ggAcf(ts_companies_clean)
+```
+```{r ACF differenced}
+ggAcf(diff(ts_companies_clean))
+```
+
+```{r ACF differenced and seasonal differencing}
+ggAcf(diff(log(diff(ts_companies_clean)), 12))
+```
+```{r}
+cbind("Sales ($million)" = ts_companies_clean,
+      "Monthly log sales" = log(ts_companies_clean),
+      "Annual change in log sales" = diff(log(ts_companies_clean),12)) %>%
+  autoplot(facets=TRUE) +
+    xlab("Year") + ylab("") +
+    ggtitle("Antidiabetic drug sales")
+```
+
+## Modelling procedure
+
+When fitting an ARIMA model to a set of (non-seasonal) time series data, the following procedure provides a useful general approach.
+
+1. Plot the data and identify any unusual observations.
+2. If necessary, transform the data (using a Box-Cox transformation) to stabilize the variance.
+3. If the data are non-stationary, take first differences of the data until the data are stationary.
+4. Examine the ACF/PACF: Is an ARIMA(p, d, 0) or ARIMA(0, d, q) model appropriate?
+5. Try your chosen model(s), and use the AICc to search for a better model.
+6. Check the residuals from your chosen model by plotting the ACF of the residuals, and doing a portmanteau test of the residuals. If they do not look like white noise, try a modified model.
+7. Once the residuals look like white noise, calculate forecasts.
+
+The Hyndman-Khandakar algorithm only takes care of steps 3–5. So even if you use it, you will still need to take care of the other steps yourself.
+
+### Adjusting for seasonality
+```{r}
+ts_companies_seasadj <- ts_companies_clean %>% stl(s.window='periodic') %>% seasadj()
+```
+```{r}
+ts_companies_seasadj %>% diff() %>% ggtsdisplay(main="")
 ```
 

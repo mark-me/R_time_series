@@ -107,11 +107,13 @@ decompose_ts <- function(ts_data) {
   df_stl <- ts_data %>% 
     stl(t.window=13, s.window="periodic", robust=TRUE)
   
-  df_stl <- fortify(df_stl$time.series)
+  df_stl <- fortify(df_stl)
   
   df_stl %<>% 
     gather(key = "component", value = "value", -Index) %>% 
-    mutate(component = ordered(component, c("trend", "seasonal", "remainder")))
+    mutate(component = paste0(toupper(str_sub(component, 1,1)) , 
+                              str_sub(component, start = 2))) %>% 
+    mutate(component = ordered(component, c("Data", "Trend", "Seasonal", "Remainder")))
   
   p_stl <- ggplot(df_stl, aes(x = Index, y = value, col = component)) +
     geom_line() +
@@ -122,6 +124,7 @@ decompose_ts <- function(ts_data) {
     guides(col = FALSE) +
     theme_graydon("grid")
   
-  return(p_stl)
+  return(list(df_stl = df_stl,
+              p_stl = p_stl))
 }
 

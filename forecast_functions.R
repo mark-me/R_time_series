@@ -13,11 +13,11 @@ evaluate_forecast <- function(forecast_model, ts_full){
   # Plot displaying the forecasted and full time series
   p_forecast <- ggplot(data = df_forecast, aes(x = Index)) + 
     geom_line(data = df_full, aes(y = Data), col = col_graydon[1]) + 
-    geom_line(aes(y = Data), col = col_graydon[2]) + 
+    geom_line(aes(y = Data), col = col_graydon[4]) + 
     geom_ribbon(aes(ymin = `Lo 80`, ymax = `Hi 80`),
-                alpha = .4, fill = col_graydon[2]) +
+                alpha = .4, fill = col_graydon[4]) +
     geom_ribbon(aes(ymin = `Lo 95`, ymax = `Hi 95`),
-                alpha = .2, fill = col_graydon[2]) +
+                alpha = .2, fill = col_graydon[4]) +
     scale_color_graydon() +
     scale_y_continuous(labels = format_number) +
     labs(title = forecast_model$method, x = "", y = "", col = "") +

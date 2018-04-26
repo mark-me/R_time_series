@@ -39,7 +39,7 @@ var_date_to <- as.Date(config$date_end)     # End date of time series
 months_forecast <- config$months_forecast   # Number of months in forecast
 ```
 
-# Loading and preparing data
+# Loading and prepping data
 
 The used configuration file, config.yml:
 ```{r Show config.yml file, echo = FALSE}
@@ -57,7 +57,7 @@ tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"),
                       stringsAsFactors = FALSE)
 ```
 
-## Rolling up the NACE hierarchy
+## Rolling up the sector hierarchy
 
 The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the NACE hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
 
@@ -136,7 +136,7 @@ ggraph(graph, layout = "nicely") +
 rm(graph, tbl_nodes, tbl_links)
 ```
 
-## Spreading companies through time
+## Time warping companies
 
 A time series is a series of data points indexed in time order. In  this step the companies are put in each month within a time frame, specified by the config file, according to their date of establishment and discontinuation.
 
@@ -158,7 +158,7 @@ tbl_companies_aggr %<>%
 
 # Initial exploration
 
-## Development of the number of companies per sector
+## Development number of companies
 
 Now we can take a quick look at the development number of companies in each sector:
 ```{r Plot number of companies per NACE code by month}
@@ -171,7 +171,7 @@ ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
 ```
 The sector with NACE code `r config$code_nace` looks like an interesting candidate, because it has no obvious trend, which would make it more challenging to forecast. 
 
-## Development of retail sector
+## Development of the retail sector
 
 When zooming in on this NACE code we see how interesting this is in terms of rises and drops in number of companies:
 ```{r pressure, echo=FALSE}
@@ -224,9 +224,9 @@ plot_time_series(list(ts_companies, ts_companies_clean),
                  c("Read", "Cleaned"))
 ```
 
-## Time series decomposition
+# Time series breakdown
 
-We can see a variety of patterns in time series. To understand and or model a time series, it is often helpful to split a time series into several components, each of which represents an underlying pattern category. These categories are:
+We can see a variety of patterns in time series. To understand and or model a time series, it is often helpful to split a time series into several components, each of which represents an underlying pattern category; this process is called decomposition. These categories are:
 
 * Level - height of the time series
 * Trend - Upward or downward moving mean
@@ -451,12 +451,12 @@ ggAcf(diff(ts_companies_clean))
 ggAcf(diff(log(diff(ts_companies_clean)), 12))
 ```
 ```{r}
-cbind("Sales ($million)" = ts_companies_clean,
-      "Monthly log sales" = log(ts_companies_clean),
-      "Annual change in log sales" = diff(log(ts_companies_clean),12)) %>%
+cbind("Number of companies" = ts_companies_clean,
+      "Monthly log # companies" = log(ts_companies_clean),
+      "Annual change in log # companies" = diff(log(ts_companies_clean), 12)) %>%
   autoplot(facets=TRUE) +
     xlab("Year") + ylab("") +
-    ggtitle("Antidiabetic drug sales")
+    ggtitle("Development # companies)
 ```
 
 ## Modelling procedure

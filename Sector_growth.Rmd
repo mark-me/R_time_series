@@ -1,6 +1,6 @@
 ---
-title: "Sector growth"
-author: "Time series forecasting" 
+title: "Time series forecasting"
+author: "Sector growth" 
 output:
   html_document:
     css: custom-release.css
@@ -39,14 +39,20 @@ var_date_to <- as.Date(config$date_end)     # End date of time series
 months_forecast <- config$months_forecast   # Number of months in forecast
 ```
 
+# Introduction
+
+A time series is a series of data points indexed (or listed or graphed) in time order. Most commonly, a time series is a sequence taken at successive equally spaced points in time. Time series forecasting is the use of a model to predict future values based on previously observed values. In this document the time series of the number of companies in the Netherlands is explored and forecasted using several methods. 
+
+First we'll load and prepp the data. Then we'll take a first look at the sector growth. After which, a time series is created and cleaned. The time series will be broken down in it's components, making us understand the time series' make-up and helping us with the time series forecasting. Now finally the actual forecasting is done by applying several forecasting methods which are compared in accuracy. The best forecasting model is then used to do a forecast of a sector's growth for 5 years.
+
 # Loading and prepping data
 
-The used configuration file, config.yml:
+Some variables that control the input in document's analysis is put in a config file. The used configuration file, config.yml, looks like this:
 ```{r Show config.yml file, echo = FALSE}
 cat(readLines("config.yml"), sep = '\n')
 ```
 
-The company data and SBI code hierarchy is loaded:
+The companies data and SBI code hierarchy data is loaded:
 ```{r Load data, collapse=TRUE}
 # Import & transform company data
 tbl_companies <- prep_companies(config$process_companies, 
@@ -59,10 +65,10 @@ tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"),
 
 ## Rolling up the sector hierarchy
 
-The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the NACE hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
+The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the SBI hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
 
-To get this mechanism working the first need to add the number of companies for each of the NACE codes to the complete NACE hierarchy.
-```{r Add the number of companies to the nace hierarchy}
+To get this mechanism working the first need to add the number of companies for each of the SBI codes to the complete SBI hierarchy.
+```{r Add the number of companies to the SBI hierarchy}
 # Add number of companies to the NACE hierarchy, so all 
 tbl_nace_qty <- tbl_nace %>% 
   left_join(tbl_companies, by = c("code" = "sbi_full")) %>% 
@@ -71,7 +77,7 @@ tbl_nace_qty <- tbl_nace %>%
   ungroup() 
 ```
 
-This is how the NACE hierarchy looks now; many sectors with a small number of companies:
+This is how the SBI hierarchy looks now; many sectors with a small number of companies:
 ```{r Display NACE hierarchy before roll-up, echo = FALSE, warning = FALSE}
 tbl_nodes <- data_frame(code = with(tbl_nace_qty, unique(c(code, code_parent)))) %>% 
   left_join(tbl_nace_qty, by = "code") %>% 
@@ -156,36 +162,39 @@ tbl_companies_aggr %<>%
   left_join(tbl_nace, by = "code")
 ```
 
-# Initial exploration
+## Initial exploration
 
-## Development number of companies
+### Development of sectors
 
 Now we can take a quick look at the development number of companies in each sector:
-```{r Plot number of companies per NACE code by month}
+```{r Plot number of companies per NACE code by month, fig.width=12, fig.height=10}
 ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
-  geom_area(col = col_graydon[2], fill = col_graydon[2], alpha = .6) +
+  geom_area(col = col_graydon[1], fill = col_graydon[1], alpha = .6) +
   facet_wrap(~ code) +
   scale_y_continuous(labels = format_number) +
   labs(x = "", y = "# Companies") +
   theme_graydon("grid")
 ```
-The sector with NACE code `r config$code_nace` looks like an interesting candidate, because it has no obvious trend, which would make it more challenging to forecast. 
+```{r echo=FALSE}
+var_sector <- (tbl_nace %>% filter(code == config$code_nace))$description
+```
+The sector with SBI code `r config$code_nace` (`r var_sector`) looks like an interesting candidate, because it has no obvious trend, which would make it more challenging to forecast. 
 
-## Development of the retail sector
+### Development of the retail sector
 
 When zooming in on this NACE code we see how interesting this is in terms of rises and drops in number of companies:
 ```{r pressure, echo=FALSE}
 tbl_companies_aggr %>% 
   filter(code == config$code_nace) %>% 
 ggplot(aes(x = month, y = qty_companies)) +
-  geom_area(col = col_graydon[2], fill = col_graydon[2], alpha = .6) +
+  geom_line(col = col_graydon[1], alpha = .6) +
   facet_wrap(~ description) +
   scale_y_continuous(labels = format_number) +
   labs(x = "", y = "# Companies") +
   theme_graydon("grid")
 ```
 
-# Creating and cleaning the time series
+# Creating the time series
 
 The library **forecast** contains all kinds of time serie goodies and forecasting functions. The **ggfortify** library provides some stuff for plotting and converting time series.
 ```{r Loading time series packages}
@@ -193,13 +202,13 @@ library(forecast)
 library(ggfortify)
 ```
 
-First, the data of the sector we want to explore and forecast is set apart:
+First, the data of the sector '`r var_sector`' we want to explore and forecast is set apart:
 ```{r Getting specific nace code}
 tbl_companies_code <- tbl_companies_aggr %>% filter(code == config$code_nace)
 var_sector <- (tbl_nace %>% filter(code == config$code_nace))$description
 ```
 
-Then a *ts* object is created from this data, by the *ts()* function. The *ts* object is created by :
+Then, a *ts* object is created from this data using the *ts()* function. The *ts* object is created by :
 
 * a vector with the quantities per month (in this case), 
 * the *frequency* i.e. number of units per year (in this case 12, for months) and 
@@ -220,20 +229,19 @@ ts_companies_clean <- tsclean(ts_companies)
 
 When putting the original time series next to the cleaned one you can see the differences:
 ```{r Compare original and cleaned time series}
-plot_time_series(list(ts_companies, ts_companies_clean),
+plot_time_series(list(ts_companies_clean, ts_companies),
                  c("Read", "Cleaned"))
 ```
 
 # Time series breakdown
 
-We can see a variety of patterns in time series. To understand and or model a time series, it is often helpful to split a time series into several components, each of which represents an underlying pattern category; this process is called decomposition. These categories are:
+We can see a variety of patterns in time series; for example we can see some larger shifts, regular looking recurring variations in smaller time windows. To understand and or model a time series, it is often helpful to split a time series into several components, each of which represents an underlying pattern category; this process is called decomposition. These categories are:
 
-* Level - height of the time series
-* Trend - Upward or downward moving mean
+* Level - height of the time series.
+* Trend - Upward or downward moving mean.
 * Seasonality - Variations at specific regular intervals less than a year (e.g.: quarterly). If it does not vary with the level: additive, if it does: multiplicative.
 * Cycles - Rises and falls without fixed period, typically longer than seasonality and higher variability
-
-* Stationary - Constant mean (i.e. no trend), no changes in variability and frequency. So: no trend, no seasonality and no cycles
+* Stationary - Constant mean (i.e. no trend), no changes in variability and frequency. So: no trend, no seasonality and no cycles.
 
 ## Determine seasonality
 
@@ -257,7 +265,13 @@ Note how the scales of each of the componens differ, this is because each graph 
 
 In this case the remainder does not appear to be stationary since there is variations in spikes. It seems there is something more going on in this time series.
 
-# Forecasting
+# Modelling forecasts
+
+There are several methods for forecasting time series. The broad categories that are explored here are:
+
+* Naive forecasting models. This is a set of forecasting models, that are at best bad models, but they can serve as a baseline to compare the accuracy of other models. 
+* Exponential smoothing forecast models - These use weighted averages of past observations, with the weights decaying exponentially as the observations get older; the more recent the observation, the higher the associated weight. These generate reliable forecasts quickly and for a wide range of time series, which is a great advantage to applications in business.
+* ARIMA models - ARIMA stands for Autoregressive Integrated Moving Average models, which is a forecasting technique is a form of regression analysis that seeks to predict future movements along the seemingly random walk. Here only the auto ARIMA model is explained.
 
 ## Create a training set
 
@@ -267,14 +281,7 @@ ts_companies_train <- subset(ts_companies_clean,
                              end = length(ts_companies_clean) - months_forecast)
 ```
 
-## Forecasting modeling techniques
-
-The  kinds of models are tested here:
-
-* Exponential smoothing forecast models
-    - Use weighted averages of past observations, with the weights decaying exponentially as the observations get older; the more recent the observation, the higher the associated weight. This framework generates reliable forecasts quickly and for a wide range of time series, which is a great advantage and of major importance to applications in business.
-* ARIMA models
-  * Auto ARIMA model
+## Naive forecasting
 
 ### Mean forecasting
 
@@ -297,6 +304,8 @@ Random walk with drift forecasting, the forecasts equal to last value plus avera
 ```{r Forecast model - drift}
 fit_drift <- rwf(ts_companies_train, drift = TRUE, h = months_forecast) 
 ```
+
+## Exponential smoothing
 
 ### Single Exponential Smoothing
 
@@ -349,13 +358,17 @@ model_ets <- ets(ts_companies_train)
 fit_ets <- forecast(model_ets, h = months_forecast)
 ```
 
-### ARIMA
+## ARIMA
+
+### Auto ARIMA
+
 ```{r Forecast model - ses}
 model_auto.arima <- auto.arima(ts_companies_train)
 fit_auto.arima <- forecast(model_auto.arima, h = months_forecast)
 ```
 
-## Evaluating the forecast models
+
+# Evaluating models
 
 Forecasting models is done by the *evaluate_forecasts()* function, from the *forecast_functions.R*. This function can take a list of all the fitted models and the complete time series *ts_companies_clean*. The function returns a list with:
 
@@ -428,56 +441,12 @@ no_best <- (lst_evaluations$tbl_accuracy %>%
 lst_forecast_plots[no_best]$p_forecast
 ```
 
-## Apply best forecasting method
+# Applying the model
 
 Now the best forecasting method is found for this time series, it is applied for a longer time period (5 years).
 ```{r Use best method forecast for longer period, warning=FALSE}
 fit_hw_a <- hw(ts_companies_train, h = 60, seasonal = "additive")
 result_fit <- evaluate_forecast(fit_hw_a, ts_companies_clean)
 result_fit$p_forecast
-```
-
-# ARIMA forecasting
-
-## Differencing
-```{r AFC plot}
-ggAcf(ts_companies_clean)
-```
-```{r ACF differenced}
-ggAcf(diff(ts_companies_clean))
-```
-
-```{r ACF differenced and seasonal differencing}
-ggAcf(diff(log(diff(ts_companies_clean)), 12))
-```
-```{r}
-cbind("Number of companies" = ts_companies_clean,
-      "Monthly log # companies" = log(ts_companies_clean),
-      "Annual change in log # companies" = diff(log(ts_companies_clean), 12)) %>%
-  autoplot(facets=TRUE) +
-    xlab("Year") + ylab("") +
-    ggtitle("Development # companies)
-```
-
-## Modelling procedure
-
-When fitting an ARIMA model to a set of (non-seasonal) time series data, the following procedure provides a useful general approach.
-
-1. Plot the data and identify any unusual observations.
-2. If necessary, transform the data (using a Box-Cox transformation) to stabilize the variance.
-3. If the data are non-stationary, take first differences of the data until the data are stationary.
-4. Examine the ACF/PACF: Is an ARIMA(p, d, 0) or ARIMA(0, d, q) model appropriate?
-5. Try your chosen model(s), and use the AICc to search for a better model.
-6. Check the residuals from your chosen model by plotting the ACF of the residuals, and doing a portmanteau test of the residuals. If they do not look like white noise, try a modified model.
-7. Once the residuals look like white noise, calculate forecasts.
-
-The Hyndman-Khandakar algorithm only takes care of steps 3–5. So even if you use it, you will still need to take care of the other steps yourself.
-
-### Adjusting for seasonality
-```{r}
-ts_companies_seasadj <- ts_companies_clean %>% stl(s.window='periodic') %>% seasadj()
-```
-```{r}
-ts_companies_seasadj %>% diff() %>% ggtsdisplay(main="")
 ```
 

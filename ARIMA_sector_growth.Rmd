@@ -1,0 +1,202 @@
+---
+title: "ARIMA time series forecasting"
+author: "Sector growth" 
+output:
+  html_document:
+    css: custom-release.css
+    df_print: paged
+    number_sections: no
+    toc: yes
+    toc_float: yes
+  html_notebook:
+    css: custom-release.css
+    toc: yes
+editor_options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+setwd(paste0(home_dir, "/R_time_series/"))
+library(ggraph) 
+library(igraph)
+
+source("project.R")
+source("load_companies.R")
+source("roll_up_nace_tree.R")
+source("forecast_functions.R")
+
+# Configuration file
+library(yaml)
+config <- read_yaml("config.yml")
+
+# Set up project
+open_project("R_time_series", home_dir)
+
+# Set analysis variables
+var_date_from <- as.Date(config$date_start) # Start date of time series
+var_date_to <- as.Date(config$date_end)     # End date of time series
+months_forecast <- config$months_forecast   # Number of months in forecast
+```
+
+# Loading and prepping data
+
+Some variables that control the input in document's analysis is put in a config file. The used configuration file, config.yml, looks like this:
+```{r Show config.yml file, echo = FALSE}
+cat(readLines("config.yml"), sep = '\n')
+```
+
+The companies data and SBI code hierarchy data is loaded:
+```{r Load data, collapse=TRUE}
+# Import & transform company data
+tbl_companies <- prep_companies(config$process_companies, 
+                                var_date_from, 
+                                var_date_to)
+# Import branche hierarchy data
+tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"), 
+                      stringsAsFactors = FALSE)
+```
+
+## Rolling up the sector hierarchy
+
+The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the SBI hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
+
+To get this mechanism working the first need to add the number of companies for each of the SBI codes to the complete SBI hierarchy.
+```{r Add the number of companies to the SBI hierarchy}
+# Add number of companies to the NACE hierarchy, so all 
+tbl_nace_qty <- tbl_nace %>% 
+  left_join(tbl_companies, by = c("code" = "sbi_full")) %>% 
+  group_by(code, code_parent, layer_no) %>% 
+  summarise(qty = n_distinct(id_giant, na.rm = TRUE)) %>% 
+  ungroup() 
+```
+Now the actual roll up is done after which the 'translation table' is joined to the table with companies table:
+```{r Rolling up NACE hierarchy}
+lst_nace_recoding <- roll_up_nace_tree(tbl_nace_qty, config$qty_companies_in_rolledup)
+
+tbl_companies %<>% 
+  left_join(lst_nace_recoding$tbl_dictionary, by = c("sbi_full" = "code"))
+```
+
+## Time warping companies
+
+A time series is a series of data points indexed in time order. In  this step the companies are put in each month within a time frame, specified by the config file, according to their date of establishment and discontinuation.
+
+Depending on the processing configuration, the data is processed *or* pre-processed is loaded; after which NACE descriptions are added.
+```{r Aggregate the number of companies and time-spread}
+# Depending on the processing configuration the data is processed
+if(config$process_aggregate){
+  tbl_companies_aggr <- aggregate_companies(tbl_companies, lst_nace_recoding$tbl_dictionary)
+  saveRDS(tbl_companies_aggr, file = paste0(dir_input, "/companies_aggr.RDS"))
+} else {
+  # or pre-processed is loaded
+  tbl_companies_aggr <- read_rds(paste0(dir_input, "/companies_aggr.RDS"))
+}
+
+tbl_companies_aggr %<>%
+  rename(code = code_new) %>% 
+  left_join(tbl_nace, by = "code")
+```
+
+# Creating and cleaning time series
+
+The library **forecast** contains all kinds of time serie goodies and forecasting functions. The **ggfortify** library provides some stuff for plotting and converting time series.
+```{r Loading time series packages}
+library(forecast)
+library(ggfortify)
+```
+```{r echo=FALSE}
+var_sector <- (tbl_nace %>% filter(code == config$code_nace))$description
+```
+
+First, the data of the sector '`r var_sector`' we want to explore and forecast is set apart:
+```{r Getting specific nace code}
+tbl_companies_code <- tbl_companies_aggr %>% filter(code == config$code_nace)
+var_sector <- (tbl_nace %>% filter(code == config$code_nace))$description
+```
+
+Then, a *ts* object is created from this data using the *ts()* function. The *ts* object is created by :
+
+* a vector with the quantities per month (in this case), 
+* the *frequency* i.e. number of units per year (in this case 12, for months) and 
+* the date from which the time series should start
+
+```{r Create time series}
+ts_companies <- ts(tbl_companies_code$qty_companies, 
+                   frequency = 12, 
+                   start = c(year(var_date_from), month(var_date_from)) )
+```
+
+## Cleaning the time series
+
+The time series is cleaned by using the *ts_clean* function. This function will remove outliers and replace missing values.
+```{r Cleaning time series}
+ts_companies_clean <- tsclean(ts_companies)
+```
+
+### ARIMA forecasting
+
+ARIMA requires a stationary time series
+
+#### Differencing
+
+Let's think of one value in the time series, let's say December 2010, how similar would you expect the value of November 2010 to be? Very similar, right? And how similar do you think December would compare to Oktober 2010 as compared to November? Slightly less or more similar? And how would December compare to September? The Auto Correlation Function (ACF) answers this. The ACF is the similarity between observations as a function of the time lag between them. Let's look how this ACF looks like for our time series, using the *ggAcf()* function:
+
+```{r AFC plot}
+ggAcf(ts_companies_clean, main = "Auto Correlation") +
+  theme_graydon("grid")
+```
+
+#### Trend removal
+
+The ACF is “decaying”, or decreasing and remains well above the significance range (dotted blue lines) until 24 months ago. A stationary process would remain inside the dotted blue lines, so this ACF is indicative of a non-stationary time series. How do we make this time series more stationary? An answer is: by calculating the differences between consecutive observations, called differencing. This reductive function removes the effect of a previous value being highly predictive for the current value, thus removing any trend effects. Differencing is achieved by applying the *diff()* function to the time series. Let's look how the ACF plot looks for the differenced time series.
+
+```{r ACF differenced}
+ggAcf(diff(ts_companies_clean), main = "Auto Correlation: Differenced time series") +
+  theme_graydon("grid")
+```
+
+#### De-seasoning
+
+This shows, that after removing the trend, the current value shows high similarity between the current value and the values of 12 and 24 months ago. This indicates a seasonal pattern: this is like saying. 
+
+Making the time series stationary requires me do not only remove trends, but also any seasonal patterns. For this we'll do another differencing, but instead of the differencing between t and t-1, we'll transform between t and t-12 according to the found 12 month seasonality. If we look at the ACF after this:
+
+```{r ACF differenced and seasonal differencing}
+ggAcf(diff(log(diff(ts_companies_clean)), 12)) +
+  theme_graydon("grid")
+```
+
+we now see the ACF falls within the significance liness. This means the time series is brought back to a stationary type after t-1 differencing and t-12 differencing. Now it's fit for ARIMA forecasting.
+
+```{r}
+cbind("Number of companies" = ts_companies_clean,
+      "Monthly log # companies" = log(ts_companies_clean),
+      "Annual change in log # companies" = diff(log(ts_companies_clean), 12)) %>%
+  autoplot(facets=TRUE) +
+    xlab("Year") + ylab("") +
+    ggtitle("Development # companies")  +
+  theme_graydon("grid")
+```
+
+#### Modelling procedure
+
+When fitting an ARIMA model to a set of (non-seasonal) time series data, the following procedure provides a useful general approach.
+
+1. Plot the data and identify any unusual observations.
+2. If necessary, transform the data (using a Box-Cox transformation) to stabilize the variance.
+3. If the data are non-stationary, take first differences of the data until the data are stationary.
+4. Examine the ACF/PACF: Is an ARIMA(p, d, 0) or ARIMA(0, d, q) model appropriate?
+5. Try your chosen model(s), and use the AICc to search for a better model.
+6. Check the residuals from your chosen model by plotting the ACF of the residuals, and doing a portmanteau test of the residuals. If they do not look like white noise, try a modified model.
+7. Once the residuals look like white noise, calculate forecasts.
+
+The Hyndman-Khandakar algorithm only takes care of steps 3–5. So even if you use it, you will still need to take care of the other steps yourself.
+
+### Adjusting for seasonality
+```{r}
+ts_companies_seasadj <- ts_companies_clean %>% stl(s.window='periodic') %>% seasadj()
+```
+```{r}
+ts_companies_seasadj %>% diff() %>% ggtsdisplay(main="") 
+```

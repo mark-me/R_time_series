@@ -1,133 +1,274 @@
-# Function: roll_up_nace_tree --------------------------------------------------------------------------
+# Function: roll_up_hierarchy --------------------------------------------------------------------------
 
-# Purpose: This function can be used to aggregate a NACE or SIC code economic activity tree, 
+# Purpose: This function can be used to aggregate a NACE or SBI code economic activity tree, 
 #          so the codes represent enough of something for example number of companies, 
 #          number of customers or revenue.
 
 # Arguments:
-#   * tbl_nace_tree - a data frame that should contain the entire NACE or SIC hierarchy with a 
+#   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy with a 
 #       quantity or amount. It should contain the following columns:
-#         - code        - a NACE or SIC code.
-#         - code_parent - a NACE or SIC code that refers to the direct parent code.
-#         - qty         - the quantity that is used to evaluate whether the code should be
+#         - code        - a NACE or SBI code.
+#         - code_parent - a NACE or SBI code that refers to the direct parent code.
+#         - layer_no    - an integer indicating the hierarchie's level, 1 being the top level
+#         - value       - the quantity that is used to evaluate whether the code should be
 #                         kept in place or should be 'pushed up' the hierarchy.
 #
-#   * threshold - The minimum value that the tbl_nace_tree qty should have to leave a code in 
+#   * threshold - The minimum value that the tbl_nace_tree value should have to leave a code in 
 #       it's place.
 
-# Return value: a list containing two data frames:
-#   * tbl_rolled_up  - New economic activity tree with quantities and 'linking' codes to create 
-#                      a new economic activity tree with only the rolled up codes
-#   * tbl_dictionary - New economic activity tree, which can be used to recode a market or 
-#                      customer table.
+# Return value: a data frame containing
+#   * code      - The original code which was input.
+#   * code_new  - The replacement code, which indicates the new position in the hierarchy
+#   * value     - The value associated with the original code (input)
 #
+roll_up_hierarchy <- function(tbl_hierarchy, threshold) {
 
-roll_up_nace_tree <- function(tbl_nace_tree, threshold) {
+  # End-points of the roll-up 
+  tbl_hierarchy_aggr <- data_frame(code = as.character(),
+                                   code_new = as.character(),
+                                   value = as.integer())
   
-  # Iterator for layers, from bottom to top
-  econ_activity_layers <- sort(unique(tbl_nace_tree$layer_no), decreasing = TRUE)
+  # Codes that are pushed up the tree (code has too low value to be end-point)
+  tbl_level_migrating <- data_frame(code = as.character(),
+                                    code_parent = as.character(),
+                                    value = as.integer())
   
-  tbl_dictionary <- NULL # Container for semantics new economic activity tree
-  tbl_rolled_up <- data_frame( code = as.character(), # Container for quantity roll-up in economic activity tree
-                               code_parent = as.character(),
-                               layer_no = as.integer(),
-                               qty = as.integer(),
-                               qty_promoted = as.integer(),
-                               qty_new = as.integer(),
-                               qty_up = as.integer(),
-                               qty_sticky = as.integer(),
-                               has_sticky = as.logical())
+  # Iterator for the levels in the hierarchy, from bottom to top
+  levels <- sort(unique(tbl_hierarchy$layer_no), decreasing = TRUE)
   
-  for (i in econ_activity_layers) {
+  for (i in levels[-length(levels)]) {
     
-    # Current layer in iteration
-    tbl_layer <- tbl_nace_tree %>% filter(layer_no == i)
+    # Get the current level  
+    tbl_level <- tbl_hierarchy %>%
+      filter(layer_no == i)  %>%
+      mutate(code_orig = code) %>% 
+      select(code, code_parent, code_orig, value)
     
-    tbl_dictionary <-rbind(tbl_dictionary, tbl_layer) # Add current layer to dictionary
+    # Make previous level codes have parent code of their parents
+    tbl_level_prev <- tbl_level %>%
+      select(-value, -code_orig) %>%
+      inner_join(tbl_level_migrating, by = c("code" = "code_parent")) %>%
+      rename(code_orig = code.y) 
     
-    # Create 2nd order ascendancy paths of all layers in the dictionary
-    tbl_dictionary_2nd <- tbl_dictionary %>%
-      filter(layer_no == i) %>%
-      inner_join(tbl_nace_tree, by = c("code_parent" = "code")) %>%
-      select(code,
-             code_parent = code_parent.y,
-             layer_no = layer_no.y,
-             qty = qty.x)
+    # Calculate this level's and previous level values per code
+    tbl_up_or_down <- rbind(tbl_level, tbl_level_prev) %>%
+      group_by(code, code_parent) %>%
+      mutate(value_code = sum(value, na.rm = TRUE)) %>%
+      ungroup() 
     
-    # Add 2nd order ascendancy paths dictionary
-    tbl_dictionary <- rbind(tbl_dictionary, tbl_dictionary_2nd)
+    # Identify the codes that have a sufficient quantity to stay at the current level
+    tbl_stays <- tbl_up_or_down %>%
+      filter(value_code >= threshold & value > 0) %>%
+      mutate(code_new = code,
+             code = code_orig) %>%
+      select(code, code_new, value)
     
-    # Calculate propagated quantities 
-    tbl_gather_ups <- tbl_rolled_up %>%
-      filter(layer_no > i) %>%
-      group_by(code_parent) %>%
-      summarise(qty_promoted = sum(qty_up, na.rm = TRUE),
-                has_sticky = max(has_sticky)) # Indicates whether code or subcodes have sticky quantities
+    # Add the codes that stay behind to the result table
+    tbl_hierarchy_aggr <- rbind(tbl_hierarchy_aggr, tbl_stays)
     
-    tbl_rolled_up_lyr <- tbl_nace_tree %>%
-      filter(layer_no == i) %>%
-      left_join(tbl_gather_ups, by = c("code" = "code_parent")) %>%
-      mutate(qty_promoted = ifelse(is.na(qty_promoted), 0, qty_promoted)) %>%
-      mutate(qty_new = qty + qty_promoted) %>%
-      mutate(qty_up = ifelse(qty_new < threshold, qty_new, 0)) %>%
-      mutate(qty_sticky = ifelse(qty_new >= threshold, qty_new, 0)) %>% 
-      mutate(has_sticky = has_sticky | qty_sticky > 0) # Indicates whether code or subcodes have sticky quantities
-    
-    tbl_rolled_up <- rbind(tbl_rolled_up, tbl_rolled_up_lyr)
+    # Gather the codes that need to be moved up further
+    tbl_level_migrating <- tbl_up_or_down %>%
+      filter(value > 0 &
+               value_code < threshold & value_code > 0) %>%
+      mutate(code = code_orig) %>%
+      select(code, code_parent, value) 
     
   }
-  rm(tbl_layer, tbl_dictionary_2nd, tbl_gather_ups, tbl_rolled_up_lyr)
   
-  # Just keep those activity codes that have 'sticking' quantities
-  tbl_rolled_up %<>%
-    mutate(qty_sticky = ifelse(layer_no == 1 & qty_up > 0, 
-                               qty_up, 
-                               qty_sticky)) %>%
-    filter(has_sticky) %>%
-    select(code, layer_no, qty_sticky)
+  # Handling the top level
+  # Get the current level  
+  tbl_level <- tbl_hierarchy %>%
+    filter(layer_no == i - 1 & value > 0)  %>%
+    mutate(code_new = code) %>% 
+    select(code, code_new, value)
   
-  # Remove codes without quantities from the dictionary
-  tbl_dictionary %<>%
-    filter(qty > 0 & layer_no != 1)
+  # Place all data that hasn't been placed yet on the top level
+  tbl_remainder <- rbind(tbl_level,
+                         tbl_level_migrating %>% 
+                           rename(code_new = code_parent))
   
-  # Find the layer at which the activities code quantity 'lands'
-  tbl_dict_min <- rbind(
-    tbl_dictionary %>%
-      select(-layer_no) %>%
-      left_join(tbl_rolled_up, by = "code") %>%
-      filter(!is.na(qty_sticky)),
-    tbl_dictionary %>%
-      select(-layer_no) %>%
-      left_join(tbl_rolled_up, by = c("code_parent" = "code")) %>%
-      filter(!is.na(qty_sticky))
-  ) %>%
-    group_by(code) %>%
-    summarise(layer_lands = max(layer_no)) %>%
-    mutate(layer_lands = layer_lands + 1)
+  tbl_hierarchy_aggr <- rbind(tbl_hierarchy_aggr, tbl_remainder)
+
+}
+
+# Function: hierarchy_code_level ------------------------------------------------------------
+
+# Purpose: This function can be used enrich each of the codes from it's chosen level's 
+#           code value
+
+# Arguments:
+#   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy, 
+#         having at least the following columns:
+#         - code        - a NACE or SBI code.
+#         - code_parent - a NACE or SBI code that refers to the direct parent code.
+#         - layer_no    - an integer indicating the hierarchie's level, 1 being the top level
+#   * level_no - an integer indicating the level, 1 being the top most level (e.g. A, B etc.)
+
+# Return value: a data frame containing the complete tbl_hierarchy data frame, with the new column:
+#   * code_level_x  - The code at the chosen level of the hierarchy
+#
+hierarchy_code_level <- function(tbl_hierarchy, level_no){
   
-  tbl_dictionary %<>% left_join(tbl_dict_min, by = "code")
+  # Codes that are pushed up the tree 
+  tbl_level_stored <- data_frame(code = as.character(),
+                                 code_parent = as.character())
   
-  # Cleaning up tbl_dictionary, keeping only nodes that specify where quantities end up 
-  tbl_dictionary <- rbind(
-    tbl_dictionary %>% # Starting nodes which are on or above threshold
-      group_by(code) %>%
-      summarise(
-        code_max = max(layer_no),
-        layer_lands = max(layer_lands)
-      ) %>%
-      filter(code_max < layer_lands) %>%
-      select(code, layer_no = code_max) %>%
-      inner_join(tbl_dictionary, by = c("code", "layer_no")) %>%
-      mutate(code_parent = code),
-    tbl_dictionary %>% # Nodes with the nodes where their quantities end up
-      filter(layer_no == layer_lands)
+  # Iterator for the levels in the hierarchy, from top to specified level
+  levels <- sort(unique(tbl_hierarchy$layer_no))
+  
+  for (i in levels[-level_no]) {
+    
+    # Get the current level  
+    tbl_level <- tbl_hierarchy %>%
+      filter(layer_no == i)  %>%
+      select(code, code_parent)
+    
+    # Push parent_code to the next level
+    tbl_level_next <- tbl_level %>%
+      left_join(tbl_level_stored, by = c("code_parent" = "code")) %>%
+      mutate(code_parent = ifelse(!is.na(code_parent.y), code_parent.y, code_parent)) %>% 
+      select(code, code_parent) 
+    
+    # Store result
+    tbl_level_stored <- rbind(tbl_level_stored, tbl_level_next)
+  }
+  
+  # Rename column for selected level code
+  names(tbl_level_stored) <- replace(
+    names(tbl_level_stored),
+    names(tbl_level_stored) == "code_parent",
+    paste0("code_level_", as.character(level_no))
   )
   
-  tbl_dictionary %<>% select(code, code_new = code_parent, qty) # Select only relevant variables
+  # Add code back to original data frame
+  tbl_hierarchy %<>%
+    left_join(tbl_level_stored, by = "code")
+}
+
+# Function: hierarchy_code_all ------------------------------------------------------------
+
+# Purpose: This function can be used enrich each of the codes with all of the codes from the 
+#          levels above the current code
+
+# Arguments:
+#   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy, 
+#         having at least the following columns:
+#         - code        - a NACE or SBI code.
+#         - code_parent - a NACE or SBI code that refers to the direct parent code.
+#         - layer_no    - an integer indicating the hierarchie's level, 1 being the top level
+
+# Return value: a data frame containing the complete tbl_hierarchy data frame, adding the column:
+#   * code_level_x  - The code at the chosen level of the hierarchy
+#
+
+hierarchy_code_all <- function(tbl_hierarchy){
+ 
+  # Iterator for the levels in the hierarchy, from top to specified level
+  levels <- sort(unique(tbl_hierarchy$layer_no))
+  for (i in levels[-1]) {
+    tbl_hierarchy <- hierarchy_code_level(tbl_hierarchy, level_no = i)
+  }
+  return(tbl_hierarchy)
+}
+
+# Function: clean_hierarchy ------------------------------------------------------------
+
+# Purpose: This function cleans up all nace codes from the hierarchy that contain a NA value
+#          and are non-connective
+
+# Arguments:
+#   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy, 
+#         having at least the following columns:
+#         - code        - a NACE or SBI code.
+#         - code_parent - a NACE or SBI code that refers to the direct parent code.
+#         - layer_no    - an integer indicating the hierarchie's level, 1 being the top level
+#         - value       - a number containing the values associated with the code
+
+# Return value: a data frame containing only the codes with other values than NA and are non-connecting
+
+clean_hierarchy <- function(tbl_hierarchy) {
   
-  # Build list with data-sets for return value
-  lst_tree_econ_activity <- list(tbl_rolled_up = tbl_rolled_up,
-                                 tbl_dictionary = tbl_dictionary)
+  # Iterator for the levels in the hierarchy, from bottom to top
+  levels <- sort(unique(tbl_hierarchy$layer_no), decreasing = TRUE)
   
-  return(lst_tree_econ_activity)
+  # Codes that have quantities of connective codes
+  tbl_level_codes <- data_frame(code = as.character(),
+                                code_parent = as.character(),
+                                layer_no = as.integer(),
+                                value = as.numeric(),
+                                has_child = as.logical())
+  
+  for (i in levels) {
+    
+    # Get the current level  
+    tbl_level <- tbl_hierarchy %>%
+      filter(layer_no == i)  %>%
+      select(code, code_parent, layer_no, value)
+    
+    # Joing previous layer to see whether codes are connective
+    tbl_level_prev <- tbl_level %>%
+      left_join(tbl_level_codes, by = c("code" = "code_parent")) %>%
+      mutate(layer_no = i,
+             has_child = !is.na(code.y)) %>% 
+      rename(value = value.x) %>% 
+      group_by(code, code_parent, layer_no, value) %>% 
+      summarise(has_child = max(has_child)) %>% 
+      ungroup() 
+    
+    # Remove codes that have no value and are not connective
+    tbl_level_prev %<>%
+      filter(has_child == 1 | !is.na(value))
+    
+    tbl_level_codes <- rbind(tbl_level_codes, tbl_level_prev)
+  }
+  
+  tbl_level_codes %<>%
+    filter(has_child == 1 | (!is.na(value) & value != 0))
+  
+  return(tbl_level_codes)
+}
+
+# Function: plot_hierarchy ------------------------------------------------------------
+
+# Purpose: This function cleans up all nace codes from the hierarchy that contain a NA value
+#          and are non-connective
+
+# Arguments:
+#   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy, 
+#         having at least the following columns:
+#         - code        - a NACE or SBI code.
+#         - code_parent - a NACE or SBI code that refers to the direct parent code.
+#         - layer_no    - an integer indicating the hierarchie's level, 1 being the top level
+#         - value       - a number containing the values associated with the code
+
+# Return value: a data frame containing only the codes with other values than NA and are non-connecting
+
+plot_hierarchy <- function(tbl_hierarchy, title = ""){
+  
+  library(ggraph)
+  library(igraph)
+  
+  tbl_nodes <- data_frame(code = with(tbl_hierarchy, unique(c(code, code_parent)))) %>% 
+    left_join(tbl_hierarchy, by = "code") %>% 
+    mutate(value = ifelse(is.na(value), 0, value),
+           layer_no = ifelse(is.na(layer_no), 0, layer_no),
+           layer_no = factor(layer_no)) 
+  
+  tbl_links <- tbl_hierarchy %>% select(code_parent, code, everything())
+  
+  graph <- graph_from_data_frame(tbl_links, tbl_nodes, directed = TRUE)
+  
+  # Create Graph
+  set.seed(42)
+  p_hierarchy <- ggraph(graph, 'dendrogram', circular = TRUE) +
+    geom_edge_diagonal(edge_width = 0.5, alpha = .4) +
+    geom_node_point(aes(colour = layer_no, size = value), 
+                    alpha = 0.4) +
+    guides(col = FALSE, size = FALSE) +
+    scale_color_graydon() +
+    labs(title = title) +
+    theme_graydon("blank")
+  
+  rm(graph, tbl_nodes, tbl_links)
+  return(p_hierarchy)
 }

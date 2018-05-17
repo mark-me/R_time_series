@@ -16,7 +16,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/R scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -73,73 +73,34 @@ To get this mechanism working the first need to add the number of companies for 
 tbl_nace_qty <- tbl_nace %>% 
   left_join(tbl_companies, by = c("code" = "sbi_full")) %>% 
   group_by(code, code_parent, layer_no) %>% 
-  summarise(qty = n_distinct(id_giant, na.rm = TRUE)) %>% 
+  summarise(value = n_distinct(id_giant, na.rm = TRUE)) %>% 
   ungroup() 
 ```
 
 This is how the SBI hierarchy looks now; many sectors with a small number of companies:
 ```{r Display NACE hierarchy before roll-up, echo = FALSE, warning = FALSE}
-tbl_nodes <- data_frame(code = with(tbl_nace_qty, unique(c(code, code_parent)))) %>% 
-  left_join(tbl_nace_qty, by = "code") %>% 
-  rename(code_sector = code)
-tbl_links <- tbl_nace_qty
-
-tbl_nodes %<>% mutate(layer_no = factor(layer_no))
-
-graph <- graph_from_data_frame(tbl_links, tbl_nodes, directed = TRUE)
-
-# Create Graph
-set.seed(42)
-ggraph(graph, layout = "nicely") +
-  geom_edge_link(edge_width = 0.5, alpha = .4) +
-  geom_node_point(aes(colour = layer_no, size = qty), 
-                  alpha = 0.4) +
-  # geom_node_text(aes(label = code_sector, colour = layer_no), 
-  #                repel = TRUE, size = 10) +
-  guides(col = FALSE, size = FALSE) +
-  scale_color_graydon() +
-  theme_graydon("blank")
-
-rm(graph, tbl_nodes, tbl_links)
+plot_hierarchy(tbl_nace_qty, "Before roll-up")
 ```
 
 Now the actual roll up is done after which the 'translation table' is joined to the table with companies table:
 ```{r Rolling up NACE hierarchy}
-lst_nace_recoding <- roll_up_nace_tree(tbl_nace_qty, config$qty_companies_in_rolledup)
+tbl_nace_rolled_up <- roll_up_hierarchy(tbl_nace_qty, 100000)#config$qty_companies_in_rolledup)
 
 tbl_companies %<>% 
-  left_join(lst_nace_recoding$tbl_dictionary, by = c("sbi_full" = "code"))
+  left_join(tbl_nace_rolled_up, by = c("sbi_full" = "code"))
 ```
 
 That results in the hierarchy below, containing far less sectors with a higher number of companies, making forecasting success more likely:
 ```{r Plot of rotbllled up NACE hierarchy, echo = FALSE, warning = FALSE}
-tbl_nace_qty <- tbl_nace %>% 
-  left_join(lst_nace_recoding$tbl_rolled_up, by = "code") %>% 
-  select(code, code_parent, layer_no = layer_no.x, qty = qty_sticky)
+tbl_hierarchy_rolled <- tbl_nace %>% 
+  left_join(tbl_nace_rolled_up, by = c("code" = "code_new")) %>% 
+  group_by(code, code_parent, layer_no) %>% 
+  summarise(value = sum(value, na.rm = TRUE)) %>% 
+  ungroup()
 
-tbl_nodes <- data_frame(code = with(tbl_nace_qty, unique(c(code, code_parent)))) %>% 
-  left_join(tbl_nace_qty, by = "code") %>% 
-  rename(code_sector = code)
-tbl_links <- tbl_nace_qty
+tbl_nace_qty <- clean_hierarchy(tbl_hierarchy_rolled)
 
-tbl_nodes %<>% mutate(layer_no = factor(layer_no))
-
-graph <- graph_from_data_frame(tbl_links, tbl_nodes, directed = TRUE)
-
-# Create Graph
-set.seed(42)
-ggraph(graph, layout = "nicely") +
-  geom_edge_link(edge_width = 0.5, alpha = .4) +
-  geom_node_point(aes(colour = layer_no, size = qty), 
-                  alpha = 0.4) +
-  # geom_node_text(aes(label = code_sector, colour = layer_no), 
-  #                repel = TRUE, size = 10) +
-  guides(col = FALSE, size = FALSE) +
-  scale_color_graydon() +
-  theme_graydon("blank")
-```
-```{r Clean up stuff, echo=FALSE}
-rm(graph, tbl_nodes, tbl_links)
+plot_hierarchy(tbl_nace_qty, "After roll-up")
 ```
 
 ## Time warping companies
@@ -150,7 +111,10 @@ Depending on the processing configuration, the data is processed *or* pre-proces
 ```{r Aggregate the number of companies and time-spread}
 # Depending on the processing configuration the data is processed
 if(config$process_aggregate){
-  tbl_companies_aggr <- aggregate_companies(tbl_companies, lst_nace_recoding$tbl_dictionary)
+  tbl_companies_aggr <- aggregate_companies(tbl_companies = tbl_companies, 
+                                            tbl_dictionary = tbl_nace_rolled_up, 
+                                            date_from = as.Date(config$date_start),
+                                            date_to = as.Date(config$date_end))
   saveRDS(tbl_companies_aggr, file = paste0(dir_input, "/companies_aggr.RDS"))
 } else {
   # or pre-processed is loaded
@@ -167,10 +131,10 @@ tbl_companies_aggr %<>%
 ### Development of sectors
 
 Now we can take a quick look at the development number of companies in each sector:
-```{r Plot number of companies per NACE code by month, fig.width=12, fig.height=10}
+```{r Plot number of companies per NACE code by month, fig.width=12, fig.height=12}
 ggplot(tbl_companies_aggr, aes(x = month, y = qty_companies)) +
   geom_area(col = col_graydon[1], fill = col_graydon[1], alpha = .6) +
-  facet_wrap(~ code) +
+  facet_wrap(~ code, scales = "free_y", ncol = 5) +
   scale_y_continuous(labels = format_number) +
   labs(x = "", y = "# Companies") +
   theme_graydon("grid")

@@ -13,8 +13,8 @@
 #         - value       - the quantity that is used to evaluate whether the code should be
 #                         kept in place or should be 'pushed up' the hierarchy.
 #
-#   * threshold - The minimum value that the tbl_nace_tree value should have to leave a code in 
-#       it's place.
+#   * threshold - The minimum value that the tbl_hierarchy value column should have to leave a  
+#       code in it's place.
 
 # Return value: a data frame containing
 #   * code      - The original code which was input.
@@ -22,7 +22,7 @@
 #   * value     - The value associated with the original code (input)
 #
 roll_up_hierarchy <- function(tbl_hierarchy, threshold) {
-
+  
   # End-points of the roll-up 
   tbl_hierarchy_aggr <- data_frame(code = as.character(),
                                    code_new = as.character(),
@@ -88,7 +88,7 @@ roll_up_hierarchy <- function(tbl_hierarchy, threshold) {
                            rename(code_new = code_parent))
   
   tbl_hierarchy_aggr <- rbind(tbl_hierarchy_aggr, tbl_remainder)
-
+  
 }
 
 # Function: hierarchy_code_level ------------------------------------------------------------
@@ -162,7 +162,7 @@ hierarchy_code_level <- function(tbl_hierarchy, level_no){
 #
 
 hierarchy_code_all <- function(tbl_hierarchy){
- 
+  
   # Iterator for the levels in the hierarchy, from top to specified level
   levels <- sort(unique(tbl_hierarchy$layer_no))
   for (i in levels[-1]) {
@@ -217,21 +217,16 @@ clean_hierarchy <- function(tbl_hierarchy) {
     
     # Remove codes that have no value and are not connective
     tbl_level_prev %<>%
-      filter(has_child == 1 | !is.na(value))
+      filter(has_child == 1 | (!is.na(value) & value != 0))
     
     tbl_level_codes <- rbind(tbl_level_codes, tbl_level_prev)
   }
-  
-  tbl_level_codes %<>%
-    filter(has_child == 1 | (!is.na(value) & value != 0))
-  
   return(tbl_level_codes)
 }
 
 # Function: plot_hierarchy ------------------------------------------------------------
 
-# Purpose: This function cleans up all nace codes from the hierarchy that contain a NA value
-#          and are non-connective
+# Purpose: Plotting hierarchies based on a single value, mostly for example puroposes
 
 # Arguments:
 #   * tbl_hierarchy - a data frame that should contain the entire NACE or SBI hierarchy, 
@@ -265,9 +260,7 @@ plot_hierarchy <- function(tbl_hierarchy, title = ""){
     geom_node_point(aes(colour = layer_no, size = value), 
                     alpha = 0.4) +
     guides(col = FALSE, size = FALSE) +
-    scale_color_graydon() +
-    labs(title = title) +
-    theme_graydon("blank")
+    labs(title = title)
   
   rm(graph, tbl_nodes, tbl_links)
   return(p_hierarchy)

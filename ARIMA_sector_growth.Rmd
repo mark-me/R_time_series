@@ -2,21 +2,21 @@
 title: "ARIMA time series forecasting"
 author: "Sector growth" 
 output:
+  html_notebook:
+    css: custom-release.css
+    toc: yes
   html_document:
     css: custom-release.css
     df_print: paged
     number_sections: no
     toc: yes
     toc_float: yes
-  html_notebook:
-    css: custom-release.css
-    toc: yes
 editor_options:
   chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
-home_dir <- "~/Downloads/Dropbox/Werk/R\ Scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/R scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -67,15 +67,15 @@ To get this mechanism working the first need to add the number of companies for 
 tbl_nace_qty <- tbl_nace %>% 
   left_join(tbl_companies, by = c("code" = "sbi_full")) %>% 
   group_by(code, code_parent, layer_no) %>% 
-  summarise(qty = n_distinct(id_giant, na.rm = TRUE)) %>% 
+  summarise(value = n_distinct(id_giant, na.rm = TRUE)) %>% 
   ungroup() 
 ```
 Now the actual roll up is done after which the 'translation table' is joined to the table with companies table:
 ```{r Rolling up NACE hierarchy}
-lst_nace_recoding <- roll_up_nace_tree(tbl_nace_qty, config$qty_companies_in_rolledup)
+tbl_nace_recoding <- roll_up_hierarchy(tbl_nace_qty, config$qty_companies_in_rolledup)
 
 tbl_companies %<>% 
-  left_join(lst_nace_recoding$tbl_dictionary, by = c("sbi_full" = "code"))
+  left_join(tbl_nace_recoding, by = c("sbi_full"="code"))
 ```
 
 ## Time warping companies
@@ -146,6 +146,14 @@ Let's think of one value in the time series, let's say December 2010, how simila
 ggAcf(ts_companies_clean, main = "Auto Correlation") +
   theme_graydon("grid")
 ```
+
+The partial autoo
+
+| Pattern | Indicates |
+| :----   | :----     |
+| Large spike at lag 1 that decreases after a few lags.	| A moving average term in the data. Use the autocorrelation function to determine the order of the moving average term. |
+| Large spike at lag 1 followed by a damped wave that alternates between positive and negative correlations.	A higher order moving average term in the data. | Use the autocorrelation function to determine the order of the moving average term. |	
+| Significant correlations at the first or second lag, followed by correlations that are not significant. |	An autoregressive term in the data. The number of significant correlations indicate the order of the autoregressive term. |
 
 #### Trend removal
 

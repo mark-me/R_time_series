@@ -1,6 +1,6 @@
 # Processing switches      
 process_companies: FALSE
-process_aggregate: TRUE
+process_aggregate: FALSE
 
 # Analysis variables
 date_start: "1997-01-01"

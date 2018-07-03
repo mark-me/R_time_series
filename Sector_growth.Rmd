@@ -41,9 +41,9 @@ months_forecast <- config$months_forecast   # Number of months in forecast
 
 # Introduction
 
-A time series is a series of data points indexed (or listed or graphed) in time order. Most commonly, a time series is a sequence taken at successive equally spaced points in time. Time series forecasting is the use of a model to predict future values based on previously observed values. In this document the time series of the number of companies in the Netherlands is explored and forecasted using several methods. 
+Whenever we are talking about a series of data-points listed or graphed in a time order, we are talking about a time series. Most commonly, a time series is a sequence of data points taken at successive equally spaced points in time. With time series forecasting you can use a model to predict future values based on previously observed values. In this document the time series of the number of companies in the Netherlands is explored and is forecasted using several methods. 
 
-First we'll load and prepp the data. Then we'll take a first look at the sector growth. After which, a time series is created and cleaned. The time series will be broken down in it's components, making us understand the time series' make-up and helping us with the time series forecasting. Now finally the actual forecasting is done by applying several forecasting methods which are compared in accuracy. The best forecasting model is then used to do a forecast of a sector's growth for 5 years.
+First we'll load and prep the data. Then we'll take a first look at the sector growth. After which, a time series is created and cleaned. The time series will be broken down in it's components, making us understand the time series' make-up and helping us with the time series forecasting. Finally, the actual forecasting is done by applying several forecasting methods which are compared in accuracy. The best forecasting model is then used to do a forecast of a sector's growth for 5 years.
 
 # Loading and prepping data
 
@@ -65,7 +65,7 @@ tbl_nace <- read.csv2(paste0(dir_input, "/branche_hierarchy.csv"),
 
 ## Rolling up the sector hierarchy
 
-The number of companies per nace code in the company file can be small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the SBI hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
+The number of companies per nace code in the company file can be very small, making it unsuitable for time series forecasting. For this reason the number of companies are aggregated though the SBI hierarchy, by propagating codes with the small number of companies to higher hierarchy codes.
 
 To get this mechanism working the first need to add the number of companies for each of the SBI codes to the complete SBI hierarchy.
 ```{r Add the number of companies to the SBI hierarchy}
@@ -79,7 +79,9 @@ tbl_nace_qty <- tbl_nace %>%
 
 This is how the SBI hierarchy looks now; many sectors with a small number of companies:
 ```{r Display NACE hierarchy before roll-up, echo = FALSE, warning = FALSE}
-plot_hierarchy(tbl_nace_qty, "Before roll-up")
+plot_hierarchy(tbl_nace_qty, "Before roll-up") +
+  scale_color_graydon() +
+  theme_graydon("blank")
 ```
 
 Now the actual roll up is done after which the 'translation table' is joined to the table with companies table:
@@ -100,12 +102,14 @@ tbl_hierarchy_rolled <- tbl_nace %>%
 
 tbl_nace_qty <- clean_hierarchy(tbl_hierarchy_rolled)
 
-plot_hierarchy(tbl_nace_qty, "After roll-up")
+plot_hierarchy(tbl_nace_qty, "After roll-up") +
+  scale_color_graydon() +
+  theme_graydon("blank")
 ```
 
 ## Time warping companies
 
-A time series is a series of data points indexed in time order. In  this step the companies are put in each month within a time frame, specified by the config file, according to their date of establishment and discontinuation.
+Remember that a time series is a series of data points indexed in time order? In this step we'll put each company in each month within a time frame, specified by the config file, according to their date of establishment and discontinuation.
 
 Depending on the processing configuration, the data is processed *or* pre-processed is loaded; after which NACE descriptions are added.
 ```{r Aggregate the number of companies and time-spread}
@@ -160,7 +164,7 @@ ggplot(aes(x = month, y = qty_companies)) +
 
 # Creating the time series
 
-The library **forecast** contains all kinds of time serie goodies and forecasting functions. The **ggfortify** library provides some stuff for plotting and converting time series.
+The library **forecast** contains all kinds of time series goodies and forecasting functions. The **ggfortify** library provides some stuff for plotting and converting time series.
 ```{r Loading time series packages}
 library(forecast)
 library(ggfortify)
@@ -191,7 +195,7 @@ The time series is cleaned by using the *ts_clean* function. This function will 
 ts_companies_clean <- tsclean(ts_companies)
 ```
 
-When putting the original time series next to the cleaned one you can see the differences:
+When putting the original time series next to the cleaned one you can see the differences (or not if there are none):
 ```{r Compare original and cleaned time series}
 plot_time_series(list(ts_companies_clean, ts_companies),
                  c("Read", "Cleaned"))
@@ -214,8 +218,9 @@ We can use a seasonality plot to see whether there is a systemtic skew of timese
 ts_companies_subset <- window(ts_companies_clean, start = 2012, end = 2017)
 
 ggseasonplot(ts_companies_subset, polar = TRUE, main ="") +
+  scale_y_continuous(labels = format_number) +
   scale_color_graydon() +
-  theme_graydon("grid")
+  theme_graydon("vertical")
 ```
 
 ## STL decomposition
@@ -225,7 +230,7 @@ STL is an acronym for Seasonal and Trend decomposition using Loess; Loess is a m
 p_stl <- decompose_ts(ts_companies_clean)
 p_stl$p_stl
 ```
-Note how the scales of each of the componens differ, this is because each graph is additive: add each component and you would get the original time series values.
+Note how the scales of each of the components differ, this is because each graph is additive: add each component and you would get the original time series values.
 
 In this case the remainder does not appear to be stationary since there is variations in spikes. It seems there is something more going on in this time series.
 

@@ -16,7 +16,7 @@ editor_options:
 ---
 
 ```{r setup, include=FALSE}
-home_dir <- "~/R scripts/"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
+home_dir <- "~/R scripts"  # "~/Downloads/Dropbox/Werk/R\ Scripts/" "~/R scripts/"   
 setwd(paste0(home_dir, "/R_time_series/"))
 library(ggraph) 
 library(igraph)
@@ -394,7 +394,7 @@ In the plot of each accuracy measurement the best forecasting method is highligh
 lst_evaluations$p_accuracy
 ```
 
-I prefer the MASE accuracy indicator because it can be applied to time series with negative values (which is less important here), and does not suffer from problems (other accuracy indicators suffer from: https://en.wikipedia.org/wiki/Mean_absolute_scaled_error.
+I prefer the MASE accuracy indicator because it can be applied to time series with negative values (which is less important here), and does not suffer from problems other accuracy indicators suffer from: https://en.wikipedia.org/wiki/Mean_absolute_scaled_error.
 
 Most accuracy measures seem to agree that the Holt-Winter's additive method is the best forecasting method.
 
